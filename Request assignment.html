@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Campus - Department Assignment</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:system-ui,Arial,sans-serif;margin:0;background:#f4f6fa;color:#222}
+  nav{background:#1f3a93;padding:12px 24px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  nav .brand{color:#fff;font-weight:700;font-size:18px;margin-right:auto}
+  nav button{background:transparent;color:#fff;border:1px solid #ffffff66;padding:8px 14px;border-radius:6px;cursor:pointer;font:inherit}
+  nav button.active{background:#fff;color:#1f3a93;font-weight:600}
+  main{max-width:1150px;margin:24px auto;padding:0 16px}
+  .card{background:#fff;border-radius:10px;padding:18px;box-shadow:0 1px 4px #0002;margin-bottom:16px}
+  h3{margin-top:0}
+  label{display:block;font-weight:600;font-size:13px;margin-top:8px}
+  input,select,textarea{width:100%;padding:8px;margin-top:4px;border:1px solid #ccd;border-radius:6px;font:inherit}
+  input[type=checkbox]{width:auto;margin:0}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .btn{background:#1f3a93;color:#fff;border:0;padding:9px 14px;border-radius:6px;cursor:pointer;font:inherit;margin-top:10px}
+  .btn.sec{background:#6b7280}.btn.red{background:#c0392b}.btn.grn{background:#2e9e4f}
+  .btn.sm{padding:5px 9px;font-size:13px;margin-top:5px}
+  .hidden{display:none}
+  .alert{background:#e7f6ec;border-left:4px solid #2e9e4f;padding:10px 14px;margin-bottom:14px;border-radius:4px}
+  .alert.err{background:#fdecea;border-color:#c0392b}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+  .tile{background:#fff;border-radius:10px;padding:12px;box-shadow:0 1px 4px #0002;border-top:5px solid #999;cursor:pointer}
+  .tile b{font-size:24px;display:block}
+  .filters{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:12px;align-items:end}
+  .bulk{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .bulk select{width:auto;margin:0}
+  .wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden}
+  th,td{padding:10px;border-bottom:1px solid #e3e6ee;text-align:left;font-size:14px;vertical-align:top}
+  th{background:#eef1f9}
+  .chip{display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;color:#fff;white-space:nowrap}
+  .badge{padding:3px 10px;border-radius:12px;font-size:12px;color:#fff;white-space:nowrap}
+  .b-Pending{background:#e69500}.b-In-Progress{background:#2a7de1}.b-Resolved{background:#2e9e4f}.b-Rejected{background:#c0392b}
+  .p-Urgent{color:#c0392b;font-weight:700}.p-High{color:#e67e22;font-weight:700}
+  .bar{height:12px;background:#e5e7ee;border-radius:6px;overflow:hidden;margin:4px 0 10px;display:flex}
+  .bar i{display:block;height:100%}
+  .toggle{display:flex;gap:6px;align-items:center;font-size:13px;font-weight:600}
+  small{color:#666}
+  @media(max-width:800px){.row,.filters{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<nav>
+  <span class="brand">🎓 Department Assignment</span>
+  <span id="tabs" class="hidden">
+    <button id="nav-assign" class="active" onclick="show('assign')">Assign Requests</button>
+    <button id="nav-depts" onclick="show('depts')">Departments</button>
+    <button onclick="logout()">Logout</button>
+  </span>
+</nav>
+
+<main>
+  <div id="msg"></div>
+
+  <div id="login" class="card" style="max-width:380px;margin:40px auto">
+    <h3>Authority Login</h3>
+    <form id="loginForm"><label>Password</label><input type="password" id="pw" required>
+      <p><button class="btn" type="submit">Login</button></p></form>
+    <small>Default password: admin123</small>
+  </div>
+
+  <!-- ASSIGN -->
+  <section id="view-assign" class="hidden">
+    <div class="tiles" id="tiles"></div>
+
+    <div class="card filters">
+      <div><label>Search</label><input id="f_q" placeholder="title / student / ticket #"></div>
+      <div><label>Department</label><select id="f_dept"></select></div>
+      <div><label>Status</label><select id="f_status"></select></div>
+      <div><label>View</label><select id="f_view">
+        <option value="open">Open only</option><option value="all">All (incl. closed)</option></select></div>
+    </div>
+
+    <div class="card bulk">
+      <b>Bulk:</b>
+      <select id="bulkDept"></select>
+      <button class="btn sm" style="margin:0" onclick="bulkAssign()">Assign Selected</button>
+      <button class="btn grn sm" style="margin:0" onclick="autoAssign()">Auto-assign Unassigned by Category</button>
+      <label class="toggle" style="margin:0"><input type="checkbox" id="startWork"> Move Pending to In Progress on assign</label>
+      <button class="btn sec sm" style="margin:0 0 0 auto" onclick="addSamples()">Load Sample Data</button>
+    </div>
+
+    <div class="wrap" id="queue"></div>
+  </section>
+
+  <!-- DEPARTMENTS -->
+  <section id="view-depts" class="hidden">
+    <div class="card">
+      <h3 id="dFormTitle">Add Department</h3>
+      <form id="deptForm">
+        <input type="hidden" id="d_old">
+        <div class="row">
+          <div><label>Name</label><input id="d_name" required></div>
+          <div><label>Contact email</label><input type="email" id="d_email"></div>
+        </div>
+        <div class="row">
+          <div><label>Head / contact person</label><input id="d_head"></div>
+          <div><label>Color</label><input type="color" id="d_color" value="#1f3a93" style="height:38px"></div>
+        </div>
+        <label>Categories handled (comma separated, used for auto-assign)</label>
+        <textarea id="d_cats" rows="2" placeholder="IT, Network"></textarea>
+        <button class="btn" type="submit">Save Department</button>
+        <button class="btn sec" type="button" onclick="resetDeptForm()">Clear</button>
+        <button class="btn red" type="button" onclick="resetDefaults()">Reset to Defaults</button>
+      </form>
+    </div>
+    <div class="card"><h3>Workload</h3><div id="workload"></div></div>
+    <div class="wrap" id="deptTable"></div>
+  </section>
+</main>
+
+<script>
+/* ---------- Config ---------- */
+const REQ_KEY = "campus_requests";            // shared with other features
+const DEPT_KEY = "campus_departments";
+const PASSWORD = "admin123";
+const STATUSES = ["Pending","In Progress","Resolved","Rejected"];
+const UNASSIGNED = "__none";
+
+const DEFAULT_DEPTS = [
+  {name:"IT Department", email:"it@university.edu", head:"", color:"#2a7de1", categories:"IT"},
+  {name:"Academic Affairs", email:"academic@university.edu", head:"", color:"#8e44ad", categories:"Classroom, Classroom Issue, Academic Support"},
+  {name:"Transport Office", email:"transport@university.edu", head:"", color:"#e67e22", categories:"Transport"},
+  {name:"Maintenance & Facilities", email:"maintenance@university.edu", head:"", color:"#c0392b", categories:"Maintenance, Maintenance Problem"},
+  {name:"Security & Lost Found", email:"security@university.edu", head:"", color:"#16a085", categories:"Lost & Found, Lost Belongings"},
+  {name:"Administration Office", email:"admin@university.edu", head:"", color:"#7f8c8d", categories:"Administrative, Administrative Service"},
+  {name:"Library", email:"library@university.edu", head:"", color:"#d35400", categories:"Library"},
+  {name:"Student Affairs", email:"studentaffairs@university.edu", head:"", color:"#2e9e4f", categories:"Cafeteria, Other"}
+];
+
+/* ---------- Helpers ---------- */
+const $ = id => document.getElementById(id);
+const read = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch { return d; } };
+const write = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+const getReqs = () => read(REQ_KEY, []);
+const getDepts = () => { let d = read(DEPT_KEY, null); if (!d) { d = DEFAULT_DEPTS; write(DEPT_KEY, d); } return d; };
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const jsq = s => esc(s).replace(/'/g, "\\'");
+const now = () => new Date().toLocaleString();
+const isOpen = r => r.status === "Pending" || r.status === "In Progress";
+const colorOf = n => (getDepts().find(d => d.name === n) || {color:"#bbb"}).color;
+const chip = n => n ? `<span class="chip" style="background:${colorOf(n)}">${esc(n)}</span>` : `<span class="chip" style="background:#bbb">Unassigned</span>`;
+const badge = s => `<span class="badge b-${String(s).replace(" ","-")}">${esc(s)}</span>`;
+
+function notify(t, err) {
+  $("msg").innerHTML = `<div class="alert ${err ? "err" : ""}">${esc(t)}</div>`;
+  setTimeout(() => $("msg").innerHTML = "", 4500);
+}
+
+function logHistory(r, note) {
+  if (!Array.isArray(r.history)) r.history = [{status: "Pending", note: "Request submitted.", at: r.created_at}];
+  r.history.push({status: r.status, note, at: now()});
+}
+
+/* ---------- Auth / tabs ---------- */
+function syncAuth() {
+  const ok = sessionStorage.getItem("campus_admin") === "1";
+  $("login").classList.toggle("hidden", ok);
+  $("tabs").classList.toggle("hidden", !ok);
+  if (ok) show("assign"); else { $("view-assign").classList.add("hidden"); $("view-depts").classList.add("hidden"); }
+}
+$("loginForm").addEventListener("submit", e => {
+  e.preventDefault();
+  if ($("pw").value === PASSWORD) { sessionStorage.setItem("campus_admin", "1"); $("pw").value = ""; syncAuth(); }
+  else notify("Wrong password.", true);
+});
+function logout() { sessionStorage.removeItem("campus_admin"); syncAuth(); }
+
+function show(v) {
+  ["assign","depts"].forEach(n => {
+    $("view-" + n).classList.toggle("hidden", n !== v);
+    $("nav-" + n).classList.toggle("active", n === v);
+  });
+  v === "assign" ? renderAssign() : renderDepts();
+}
+
+/* ---------- Assignment logic ---------- */
+function deptForCategory(cat) {
+  if (!cat) return null;
+  const c = cat.trim().toLowerCase();
+  const d = getDepts().find(d => d.categories.split(",").map(x => x.trim().toLowerCase()).includes(c));
+  return d ? d.name : null;
+}
+
+function assign(r, dept, startWork) {
+  const old = r.department || "";
+  if (old === dept) return false;
+  r.department = dept;
+  r.assigned_at = now();
+  if (startWork && dept && r.status === "Pending") r.status = "In Progress";
+  logHistory(r, dept ? (old ? `Reassigned from ${old} to ${dept}.` : `Assigned to ${dept}.`) : `Unassigned from ${old}.`);
+  r.updated_at = now();
+  return true;
+}
+
+function assignOne(id) {
+  const data = getReqs(), r = data.find(x => x.id === id);
+  if (!r) return;
+  const dept = $("sel-" + id).value;
+  if (assign(r, dept, $("startWork").checked)) { write(REQ_KEY, data); notify(`Request #${id} ${dept ? "assigned to " + dept : "unassigned"}.`); }
+  renderAssign();
+}
+
+function bulkAssign() {
+  const ids = [...document.querySelectorAll(".sel:checked")].map(c => +c.value);
+  const dept = $("bulkDept").value;
+  if (!ids.length) return notify("Select at least one request.", true);
+  const data = getReqs();
+  let n = 0;
+  data.filter(r => ids.includes(r.id)).forEach(r => { if (assign(r, dept, $("startWork").checked)) n++; });
+  write(REQ_KEY, data); renderAssign();
+  notify(`${n} request(s) ${dept ? "assigned to " + dept : "unassigned"}.`);
+}
+
+function autoAssign() {
+  const data = getReqs();
+  let n = 0, skipped = 0;
+  data.filter(r => isOpen(r) && !r.department).forEach(r => {
+    const d = deptForCategory(r.category);
+    if (d) { assign(r, d, $("startWork").checked); n++; } else skipped++;
+  });
+  write(REQ_KEY, data); renderAssign();
+  notify(`${n} request(s) auto-assigned.${skipped ? " " + skipped + " had no matching department (set a category or assign manually)." : ""}`);
+}
+
+/* ---------- Assign view ---------- */
+function fillFilters() {
+  const names = getDepts().map(d => d.name);
+  const keepF = $("f_dept").value, keepB = $("bulkDept").value;
+  $("f_dept").innerHTML = `<option value="">All</option><option value="${UNASSIGNED}">Unassigned</option>` + names.map(n => `<option>${esc(n)}</option>`).join("");
+  $("bulkDept").innerHTML = `<option value="">Unassigned (clear)</option>` + names.map(n => `<option>${esc(n)}</option>`).join("");
+  $("f_status").innerHTML = `<option value="">All</option>` + STATUSES.map(s => `<option>${s}</option>`).join("");
+  $("f_dept").value = keepF; $("bulkDept").value = keepB;
+}
+
+function renderAssign() {
+  const keepStatus = $("f_status").value;
+  fillFilters();
+  $("f_status").value = keepStatus;
+
+  const all = getReqs(), open = all.filter(isOpen), depts = getDepts();
+  $("tiles").innerHTML =
+    `<div class="tile" style="border-color:#bbb" onclick="quick('${UNASSIGNED}')"><b>${open.filter(r => !r.department).length}</b>Unassigned</div>` +
+    depts.map(d => `<div class="tile" style="border-color:${d.color}" onclick="quick('${jsq(d.name)}')">
+      <b>${open.filter(r => r.department === d.name).length}</b><small>${esc(d.name)}</small></div>`).join("");
+
+  const q = $("f_q").value.trim().toLowerCase(), fd = $("f_dept").value, fs = $("f_status").value, v = $("f_view").value;
+  const rows = all.filter(r =>
+      (v === "all" || isOpen(r)) &&
+      (!fd || (fd === UNASSIGNED ? !r.department : r.department === fd)) &&
+      (!fs || r.status === fs) &&
+      (!q || [r.title, r.student_name, r.student_id, String(r.id)].some(x => String(x ?? "").toLowerCase().includes(q))))
+    .sort((a, b) => (!!a.department - !!b.department) || b.id - a.id);   // unassigned first
+
+  const opts = sel => `<option value="">Unassigned</option>` +
+    depts.map(d => `<option ${d.name === sel ? "selected" : ""}>${esc(d.name)}</option>`).join("");
+
+  $("queue").innerHTML = `<table>
+    <tr><th><input type="checkbox" onchange="document.querySelectorAll('.sel').forEach(c=>c.checked=this.checked)"></th>
+    <th>#</th><th>Request</th><th>Category</th><th>Status</th><th>Department</th><th>Assign</th></tr>
+    ${rows.map(r => {
+      const sug = !r.department ? deptForCategory(r.category) : null;
+      return `<tr>
+      <td><input type="checkbox" class="sel" value="${r.id}"></td>
+      <td>${r.id}</td>
+      <td><b>${esc(r.title)}</b> <small class="p-${r.priority}">${esc(r.priority)}</small><br>
+          <small>${esc(r.student_name)} (${esc(r.student_id)})</small><br>${esc(r.description)}</td>
+      <td>${esc(r.category) || "<small>Uncategorized</small>"}</td>
+      <td>${badge(r.status)}</td>
+      <td>${chip(r.department)}${r.assigned_at ? `<br><small>${esc(r.assigned_at)}</small>` : ""}
+          ${sug ? `<br><small>Suggested: <b>${esc(sug)}</b></small>` : ""}</td>
+      <td><select id="sel-${r.id}">${opts(r.department || sug || "")}</select>
+          <button class="btn sm" onclick="assignOne(${r.id})">Assign</button></td></tr>`;
+    }).join("") || `<tr><td colspan="7">No requests.</td></tr>`}
+  </table>`;
+}
+
+function quick(d) { $("f_dept").value = d; $("f_view").value = "open"; renderAssign(); }
+
+/* ---------- Departments view ---------- */
+function renderDepts() {
+  const reqs = getReqs(), depts = getDepts();
+  const maxTotal = Math.max(1, ...depts.map(d => reqs.filter(r => r.department === d.name).length));
+
+  $("workload").innerHTML = depts.map(d => {
+    const mine = reqs.filter(r => r.department === d.name);
+    const open = mine.filter(isOpen).length, done = mine.length - open;
+    return `<div>${chip(d.name)} <small>${open} open, ${done} closed</small></div>
+      <div class="bar"><i style="width:${open / maxTotal * 100}%;background:${d.color}"></i>
+      <i style="width:${done / maxTotal * 100}%;background:${d.color}55"></i></div>`;
+  }).join("");
+
+  $("deptTable").innerHTML = `<table><tr><th>Department</th><th>Contact</th><th>Categories handled</th><th>Open</th><th>Action</th></tr>
+    ${depts.map(d => `<tr>
+      <td>${chip(d.name)}</td>
+      <td>${esc(d.head) || "-"}<br><small>${esc(d.email) || "-"}</small></td>
+      <td><small>${esc(d.categories) || "-"}</small></td>
+      <td>${reqs.filter(r => r.department === d.name && isOpen(r)).length}</td>
+      <td><button class="btn sm" onclick="editDept('${jsq(d.name)}')">Edit</button>
+          <button class="btn sm red" onclick="delDept('${jsq(d.name)}')">Delete</button></td></tr>`).join("")}
+  </table>`;
+}
+
+function resetDeptForm() {
+  $("deptForm").reset(); $("d_old").value = ""; $("d_color").value = "#1f3a93";
+  $("dFormTitle").textContent = "Add Department";
+}
+
+function editDept(name) {
+  const d = getDepts().find(x => x.name === name);
+  if (!d) return;
+  $("d_old").value = d.name; $("d_name").value = d.name; $("d_email").value = d.email;
+  $("d_head").value = d.head; $("d_color").value = d.color; $("d_cats").value = d.categories;
+  $("dFormTitle").textContent = "Edit Department: " + d.name;
+  window.scrollTo({top: 0, behavior: "smooth"});
+}
+
+$("deptForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const depts = getDepts(), old = $("d_old").value, name = $("d_name").value.trim();
+  if (depts.some(d => d.name.toLowerCase() === name.toLowerCase() && d.name !== old)) return notify("Department already exists.", true);
+  const obj = {name, email: $("d_email").value.trim(), head: $("d_head").value.trim(), color: $("d_color").value, categories: $("d_cats").value.trim()};
+  if (old) {
+    depts[depts.findIndex(d => d.name === old)] = obj;
+    if (old !== name) { const data = getReqs(); data.forEach(r => { if (r.department === old) r.department = name; }); write(REQ_KEY, data); }
+  } else depts.push(obj);
+  write(DEPT_KEY, depts);
+  resetDeptForm(); renderDepts();
+  notify(`Department "${name}" saved.`);
+});
+
+function delDept(name) {
+  if (!confirm(`Delete "${name}"? Its requests become Unassigned.`)) return;
+  write(DEPT_KEY, getDepts().filter(d => d.name !== name));
+  const data = getReqs();
+  data.forEach(r => { if (r.department === name) { r.department = ""; logHistory(r, `Department "${name}" removed; request unassigned.`); } });
+  write(REQ_KEY, data);
+  renderDepts(); notify(`Department "${name}" deleted.`);
+}
+
+function resetDefaults() {
+  if (!confirm("Reset all departments to defaults?")) return;
+  write(DEPT_KEY, DEFAULT_DEPTS); renderDepts(); notify("Departments reset.");
+}
+
+/* ---------- Sample data ---------- */
+function addSamples() {
+  const S = [
+    ["WiFi not working in library","IT","High"],["Projector broken in room 502","Classroom","Medium"],
+    ["Bus 7 arrives late","Transport","Low"],["Water leak in washroom","Maintenance","High"],
+    ["Lost black wallet","Lost & Found","Medium"],["Need official transcript","Administrative","Medium"],
+    ["Midterm result missing","Academic Support","Urgent"],["Book return fine dispute","Library","Low"],
+    ["Suggestion for club room","","Low"]
+  ];
+  const data = getReqs();
+  let id = data.length ? Math.max(...data.map(r => r.id)) : 0;
+  S.forEach(([title, category, priority], i) => data.push({
+    id: ++id, student_id: "232-35-" + (300 + i), student_name: "Sample Student " + (i + 1), email: "",
+    title, description: "Sample description for " + title.toLowerCase() + ".", category, priority,
+    status: "Pending", location: "", remarks: "", department: "", created_ts: Date.now() - i * 3600000,
+    created_at: new Date(Date.now() - i * 3600000).toLocaleString(), updated_at: now()
+  }));
+  write(REQ_KEY, data); renderAssign();
+  notify("Sample requests loaded. Try Auto-assign.");
+}
+
+/* ---------- Init ---------- */
+getDepts();
+["f_q","f_dept","f_status","f_view"].forEach(i => $(i).addEventListener("input", renderAssign));
+window.addEventListener("storage", () => { if (sessionStorage.getItem("campus_admin") === "1") { $("view-assign").classList.contains("hidden") ? renderDepts() : renderAssign(); } });
+syncAuth();
+</script>
+</body>
+</html>
