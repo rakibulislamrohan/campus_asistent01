@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Campus - Categorize Requests</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:system-ui,Arial,sans-serif;margin:0;background:#f4f6fa;color:#222}
+  nav{background:#1f3a93;padding:12px 24px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  nav .brand{color:#fff;font-weight:700;font-size:18px;margin-right:auto}
+  nav button{background:transparent;color:#fff;border:1px solid #ffffff66;padding:8px 14px;border-radius:6px;cursor:pointer;font:inherit}
+  nav button.active{background:#fff;color:#1f3a93;font-weight:600}
+  main{max-width:1020px;margin:24px auto;padding:0 16px}
+  .card{background:#fff;border-radius:10px;padding:20px;box-shadow:0 1px 4px #0002;margin-bottom:16px}
+  h2,h3{margin-top:0}
+  label{display:block;margin-top:10px;font-weight:600;font-size:14px}
+  input,select,textarea{width:100%;padding:9px;margin-top:4px;border:1px solid #ccd;border-radius:6px;font:inherit}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .btn{background:#1f3a93;color:#fff;border:0;padding:9px 16px;border-radius:6px;cursor:pointer;margin-top:12px;font:inherit}
+  .btn.sec{background:#6b7280}.btn.red{background:#c0392b}.btn.grn{background:#2e9e4f}
+  .btn.sm{padding:5px 10px;margin-top:4px;font-size:13px}
+  .hidden{display:none}
+  .alert{background:#e7f6ec;border-left:4px solid #2e9e4f;padding:10px 14px;margin-bottom:14px;border-radius:4px}
+  .alert.err{background:#fdecea;border-color:#c0392b}
+  table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden}
+  th,td{padding:10px;border-bottom:1px solid #e3e6ee;text-align:left;font-size:14px;vertical-align:top}
+  th{background:#eef1f9}
+  .wrap{overflow-x:auto}
+  .chip{display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;color:#fff;white-space:nowrap}
+  .filters{display:grid;grid-template-columns:1fr 1.5fr auto auto;gap:12px;align-items:end}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+  .tile{background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 4px #0002;border-top:5px solid #999;cursor:pointer}
+  .tile b{font-size:26px;display:block}
+  .bar{height:14px;background:#e5e7ee;border-radius:7px;overflow:hidden;margin:4px 0 12px}
+  .bar i{display:block;height:100%}
+  small{color:#666}
+  @media(max-width:700px){.row,.filters{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="brand">🎓 Smart Campus Assistant</span>
+  <button id="nav-requests" class="active" onclick="show('requests')">Requests</button>
+  <button id="nav-summary" onclick="show('summary')">Summary</button>
+  <button id="nav-cats" onclick="show('cats')">Manage Categories</button>
+</nav>
+
+<main>
+  <div id="msg"></div>
+
+  <!-- REQUESTS -->
+  <section id="view-requests">
+    <div class="card">
+      <h3>Quick Add Request <small>(auto-categorized on save)</small></h3>
+      <form id="addForm">
+        <div class="row">
+          <div><label>Student ID</label><input id="a_sid" required></div>
+          <div><label>Name</label><input id="a_name" required></div>
+        </div>
+        <label>Title</label><input id="a_title" required>
+        <label>Description</label><textarea id="a_desc" rows="3" required></textarea>
+        <button class="btn" type="submit">Add &amp; Auto-Categorize</button>
+        <button class="btn sec" type="button" onclick="addSamples()">Load Sample Data</button>
+      </form>
+    </div>
+
+    <div class="card filters">
+      <div><label>Category</label><select id="f_cat" onchange="renderRequests()"></select></div>
+      <div><label>Search</label><input id="f_q" oninput="renderRequests()" placeholder="title / description / student"></div>
+      <button class="btn grn" style="margin:0" onclick="autoAll(false)">Auto-categorize Uncategorized</button>
+      <button class="btn" style="margin:0" onclick="autoAll(true)">Re-categorize All</button>
+    </div>
+    <div class="wrap" id="reqTable"></div>
+  </section>
+
+  <!-- SUMMARY -->
+  <section id="view-summary" class="hidden">
+    <div class="grid" id="tiles"></div>
+    <div class="card" style="margin-top:16px"><h3>Distribution</h3><div id="bars"></div></div>
+  </section>
+
+  <!-- CATEGORIES -->
+  <section id="view-cats" class="hidden">
+    <div class="card">
+      <h3 id="catFormTitle">Add Category</h3>
+      <form id="catForm">
+        <input type="hidden" id="c_old">
+        <div class="row">
+          <div><label>Name</label><input id="c_name" required></div>
+          <div><label>Color</label><input type="color" id="c_color" value="#1f3a93" style="height:40px"></div>
+        </div>
+        <label>Keywords (comma separated, used for auto-categorization)</label>
+        <textarea id="c_keys" rows="2" placeholder="wifi, internet, password, laptop"></textarea>
+        <button class="btn" type="submit">Save Category</button>
+        <button class="btn sec" type="button" onclick="resetCatForm()">Clear</button>
+        <button class="btn red" type="button" onclick="resetDefaults()">Reset to Defaults</button>
+      </form>
+    </div>
+    <div class="wrap" id="catTable"></div>
+  </section>
+</main>
+
+<script>
+/* ---------- Config ---------- */
+const REQ_KEY = "campus_requests";      // shared with the Complaint / Service Request feature
+const CAT_KEY = "campus_categories";
+const FALLBACK = "Other";
+
+const DEFAULT_CATS = [
+  {name:"IT", color:"#2a7de1", keywords:"wifi, wi-fi, internet, network, password, login, portal, email, laptop, computer, software, server, projector, printer, website, lms, account, system"},
+  {name:"Classroom", color:"#8e44ad", keywords:"classroom, class, room, board, whiteboard, desk, bench, chair, ac, air conditioner, fan, light, lecture, seat, projector screen, lab"},
+  {name:"Transport", color:"#e67e22", keywords:"bus, transport, route, driver, shuttle, vehicle, pickup, drop, schedule, parking, van, stop"},
+  {name:"Maintenance", color:"#c0392b", keywords:"leak, broken, repair, toilet, washroom, water, electricity, power, plumbing, lift, elevator, door, window, paint, clean, cleaning"},
+  {name:"Lost & Found", color:"#16a085", keywords:"lost, found, missing, wallet, bag, id card, keys, umbrella, phone, belonging, stolen"},
+  {name:"Academic Support", color:"#2e9e4f", keywords:"exam, result, grade, marks, course, syllabus, teacher, faculty, assignment, registration, retake, advisor, tutor, class schedule"},
+  {name:"Administrative", color:"#7f8c8d", keywords:"certificate, transcript, fee, payment, scholarship, waiver, document, admission, clearance, transfer, office, form"},
+  {name:"Library", color:"#d35400", keywords:"library, book, journal, borrow, return, fine, reading room"},
+  {name:"Cafeteria", color:"#f39c12", keywords:"cafeteria, canteen, food, meal, menu, lunch, hygiene, price"},
+  {name:FALLBACK, color:"#95a5a6", keywords:""}
+];
+
+/* ---------- Storage ---------- */
+const read = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch { return d; } };
+const write = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+const getCats = () => { let c = read(CAT_KEY, null); if (!c) { c = DEFAULT_CATS; write(CAT_KEY, c); } return c; };
+const getReqs = () => read(REQ_KEY, []);
+
+/* ---------- Helpers ---------- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const now = () => new Date().toLocaleString();
+const colorOf = n => (getCats().find(c => c.name === n) || {color:"#999"}).color;
+const chip = n => n ? `<span class="chip" style="background:${colorOf(n)}">${esc(n)}</span>` : `<span class="chip" style="background:#bbb">Uncategorized</span>`;
+
+function notify(t, err) {
+  $("msg").innerHTML = `<div class="alert ${err ? "err" : ""}">${esc(t)}</div>`;
+  setTimeout(() => $("msg").innerHTML = "", 4500);
+}
+
+function show(v) {
+  ["requests","summary","cats"].forEach(n => {
+    $("view-" + n).classList.toggle("hidden", n !== v);
+    $("nav-" + n).classList.toggle("active", n === v);
+  });
+  if (v === "requests") renderRequests();
+  if (v === "summary") renderSummary();
+  if (v === "cats") renderCats();
+}
+
+/* ---------- Auto-categorization engine ---------- */
+function classify(text) {
+  text = " " + text.toLowerCase().replace(/[^a-z0-9&\- ]/g, " ") + " ";
+  let best = FALLBACK, bestScore = 0;
+  getCats().forEach(c => {
+    if (c.name === FALLBACK) return;
+    let score = 0;
+    c.keywords.split(",").map(k => k.trim().toLowerCase()).filter(Boolean).forEach(k => {
+      // whole-word match; multi-word keywords weigh more
+      if (text.includes(" " + k + " ")) score += k.includes(" ") ? 2 : 1;
+    });
+    if (score > bestScore) { bestScore = score; best = c.name; }
+  });
+  return best;
+}
+
+function autoAll(force) {
+  const data = getReqs();
+  let n = 0;
+  data.forEach(r => {
+    if (force || !r.category || r.category === "Uncategorized") {
+      const c = classify(r.title + " " + r.description);
+      if (c !== r.category) { r.category = c; r.updated_at = now(); n++; }
+    }
+  });
+  write(REQ_KEY, data);
+  renderRequests();
+  notify(`${n} request(s) categorized.`);
+}
+
+/* ---------- Requests view ---------- */
+function fillFilter() {
+  const sel = $("f_cat"), cur = sel.value;
+  sel.innerHTML = `<option value="">All</option><option value="__none">Uncategorized</option>` +
+    getCats().map(c => `<option>${esc(c.name)}</option>`).join("");
+  sel.value = cur;
+}
+
+function renderRequests() {
+  fillFilter();
+  const fc = $("f_cat").value, q = $("f_q").value.trim().toLowerCase();
+  const rows = getReqs().filter(r =>
+      (!fc || (fc === "__none" ? !r.category : r.category === fc)) &&
+      (!q || [r.title, r.description, r.student_name, r.student_id].some(x => (x || "").toLowerCase().includes(q))))
+    .sort((a, b) => b.id - a.id);
+
+  const opts = sel => `<option value="">Uncategorized</option>` +
+    getCats().map(c => `<option ${c.name === sel ? "selected" : ""}>${esc(c.name)}</option>`).join("");
+
+  $("reqTable").innerHTML = `<table>
+    <tr><th>#</th><th>Request</th><th>Student</th><th>Category</th><th>Change</th></tr>
+    ${rows.map(r => `<tr>
+      <td>${r.id}</td>
+      <td><b>${esc(r.title)}</b><br>${esc(r.description)}</td>
+      <td>${esc(r.student_name)}<br><small>${esc(r.student_id)}</small></td>
+      <td>${chip(r.category)}</td>
+      <td><select onchange="setCat(${r.id}, this.value)">${opts(r.category)}</select>
+          <button class="btn sm grn" onclick="suggest(${r.id})">Auto</button></td>
+    </tr>`).join("") || `<tr><td colspan="5">No requests.</td></tr>`}
+  </table>`;
+}
+
+function setCat(id, cat) {
+  const data = getReqs(), r = data.find(x => x.id === id);
+  if (!r) return;
+  r.category = cat; r.updated_at = now();
+  write(REQ_KEY, data);
+  renderRequests();
+  notify(`Request #${id} set to ${cat || "Uncategorized"}.`);
+}
+
+function suggest(id) {
+  const r = getReqs().find(x => x.id === id);
+  if (r) setCat(id, classify(r.title + " " + r.description));
+}
+
+$("addForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const data = getReqs();
+  const id = data.length ? Math.max(...data.map(r => r.id)) + 1 : 1;
+  const title = $("a_title").value.trim(), description = $("a_desc").value.trim();
+  const category = classify(title + " " + description);
+  data.push({
+    id, student_id: $("a_sid").value.trim(), student_name: $("a_name").value.trim(),
+    email: "", title, description, category, location: "", priority: "Medium",
+    status: "Pending", remarks: "", created_at: now(), updated_at: now()
+  });
+  write(REQ_KEY, data);
+  e.target.reset();
+  renderRequests();
+  notify(`Request #${id} added and categorized as ${category}.`);
+});
+
+function addSamples() {
+  const S = [
+    ["WiFi not working in library","Cannot connect to the internet since morning, password rejected."],
+    ["Projector broken in room 502","The projector in classroom 502 does not turn on."],
+    ["Bus 7 arrives late","Morning bus route 7 is delayed almost daily, driver changes schedule."],
+    ["Water leak in washroom","Washroom on 3rd floor has a leaking pipe and no water."],
+    ["Lost my wallet","Lost black wallet with ID card near the cafeteria."],
+    ["Need transcript and certificate","Requesting official transcript, payment already made."],
+    ["Exam result not published","Marks for midterm exam are missing in the portal."],
+    ["Suggestion for new club room","We would like a space for the robotics club."]
+  ];
+  const data = getReqs();
+  let id = data.length ? Math.max(...data.map(r => r.id)) : 0;
+  S.forEach(([title, description], i) => data.push({
+    id: ++id, student_id: "232-35-" + (300 + i), student_name: "Sample Student " + (i + 1), email: "",
+    title, description, category: "", location: "", priority: "Medium",
+    status: "Pending", remarks: "", created_at: now(), updated_at: now()
+  }));
+  write(REQ_KEY, data);
+  renderRequests();
+  notify("Sample requests loaded (uncategorized). Click Auto-categorize.");
+}
+
+/* ---------- Summary ---------- */
+function renderSummary() {
+  const reqs = getReqs(), cats = getCats();
+  const counts = cats.map(c => ({...c, n: reqs.filter(r => r.category === c.name).length}));
+  const none = reqs.filter(r => !r.category).length;
+  const total = reqs.length || 1;
+
+  $("tiles").innerHTML = counts.map(c => `
+    <div class="tile" style="border-color:${c.color}" onclick="filterTo('${esc(c.name).replace(/'/g, "\\'")}')">
+      <b>${c.n}</b>${esc(c.name)}</div>`).join("") +
+    `<div class="tile" style="border-color:#bbb" onclick="filterTo('__none')"><b>${none}</b>Uncategorized</div>`;
+
+  $("bars").innerHTML = counts.concat([{name:"Uncategorized", color:"#bbb", n:none}]).map(c => `
+    <div>${esc(c.name)} <small>(${c.n} - ${Math.round(c.n / total * 100)}%)</small></div>
+    <div class="bar"><i style="width:${c.n / total * 100}%;background:${c.color}"></i></div>`).join("");
+}
+
+function filterTo(c) { show("requests"); $("f_cat").value = c; renderRequests(); }
+
+/* ---------- Manage categories ---------- */
+function renderCats() {
+  const reqs = getReqs();
+  $("catTable").innerHTML = `<table>
+    <tr><th>Category</th><th>Keywords</th><th>Requests</th><th>Action</th></tr>
+    ${getCats().map(c => `<tr>
+      <td>${chip(c.name)}</td><td><small>${esc(c.keywords) || "-"}</small></td>
+      <td>${reqs.filter(r => r.category === c.name).length}</td>
+      <td><button class="btn sm" onclick="editCat('${esc(c.name).replace(/'/g, "\\'")}')">Edit</button>
+          ${c.name === FALLBACK ? "" : `<button class="btn sm red" onclick="delCat('${esc(c.name).replace(/'/g, "\\'")}')">Delete</button>`}</td>
+    </tr>`).join("")}
+  </table>`;
+}
+
+function resetCatForm() {
+  $("catForm").reset(); $("c_old").value = ""; $("c_color").value = "#1f3a93";
+  $("catFormTitle").textContent = "Add Category"; $("c_name").readOnly = false;
+}
+
+function editCat(name) {
+  const c = getCats().find(x => x.name === name);
+  if (!c) return;
+  $("c_old").value = c.name; $("c_name").value = c.name;
+  $("c_color").value = c.color; $("c_keys").value = c.keywords;
+  $("c_name").readOnly = c.name === FALLBACK;
+  $("catFormTitle").textContent = "Edit Category: " + c.name;
+  window.scrollTo({top: 0, behavior: "smooth"});
+}
+
+$("catForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const cats = getCats(), old = $("c_old").value, name = $("c_name").value.trim();
+  if (cats.some(c => c.name.toLowerCase() === name.toLowerCase() && c.name !== old)) return notify("Category already exists.", true);
+  const obj = {name, color: $("c_color").value, keywords: $("c_keys").value.trim()};
+  if (old) {
+    cats[cats.findIndex(c => c.name === old)] = obj;
+    if (old !== name) {                       // keep requests linked when renamed
+      const data = getReqs(); data.forEach(r => { if (r.category === old) r.category = name; }); write(REQ_KEY, data);
+    }
+  } else {
+    cats.splice(cats.length - 1, 0, obj);     // keep "Other" last
+  }
+  write(CAT_KEY, cats);
+  resetCatForm(); renderCats();
+  notify(`Category "${name}" saved.`);
+});
+
+function delCat(name) {
+  if (!confirm(`Delete "${name}"? Its requests become Uncategorized.`)) return;
+  write(CAT_KEY, getCats().filter(c => c.name !== name));
+  const data = getReqs(); data.forEach(r => { if (r.category === name) r.category = ""; }); write(REQ_KEY, data);
+  renderCats();
+  notify(`Category "${name}" deleted.`);
+}
+
+function resetDefaults() {
+  if (!confirm("Reset all categories to defaults?")) return;
+  write(CAT_KEY, DEFAULT_CATS); renderCats(); notify("Categories reset.");
+}
+
+/* ---------- Init ---------- */
+getCats();
+renderRequests();
+</script>
+</body>
+</html>

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Campus - View Submitted Requests</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:system-ui,Arial,sans-serif;margin:0;background:#f4f6fa;color:#222}
+  nav{background:#1f3a93;padding:14px 24px;color:#fff;font-weight:700;font-size:18px}
+  main{max-width:1100px;margin:24px auto;padding:0 16px}
+  .card{background:#fff;border-radius:10px;padding:18px;box-shadow:0 1px 4px #0002;margin-bottom:16px}
+  label{display:block;font-weight:600;font-size:13px}
+  input,select{width:100%;padding:8px;margin-top:4px;border:1px solid #ccd;border-radius:6px;font:inherit}
+  .filters{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;align-items:end}
+  .btn{background:#1f3a93;color:#fff;border:0;padding:9px 14px;border-radius:6px;cursor:pointer;font:inherit}
+  .btn.sec{background:#6b7280}.btn.grn{background:#2e9e4f}.btn.sm{padding:5px 10px;font-size:13px}
+  .btn:disabled{opacity:.4;cursor:default}
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px}
+  .stats div{background:#fff;padding:14px;border-radius:10px;text-align:center;box-shadow:0 1px 4px #0002;cursor:pointer}
+  .stats b{font-size:26px;display:block;color:#1f3a93}
+  .wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden}
+  th,td{padding:10px;border-bottom:1px solid #e3e6ee;text-align:left;font-size:14px;vertical-align:top}
+  th{background:#eef1f9;cursor:pointer;white-space:nowrap;user-select:none}
+  tr.clickable:hover{background:#f6f8fd}
+  .badge{padding:3px 10px;border-radius:12px;font-size:12px;color:#fff;white-space:nowrap}
+  .b-Pending{background:#e69500}.b-In-Progress{background:#2a7de1}.b-Resolved{background:#2e9e4f}.b-Rejected{background:#c0392b}
+  .p-Urgent{color:#c0392b;font-weight:700}.p-High{color:#e67e22;font-weight:700}
+  .pager{display:flex;gap:10px;align-items:center;justify-content:center;margin-top:14px}
+  .bar{display:flex;gap:10px;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+  small{color:#666}
+  /* modal */
+  .overlay{position:fixed;inset:0;background:#0006;display:flex;align-items:center;justify-content:center;padding:16px}
+  .modal{background:#fff;border-radius:12px;max-width:640px;width:100%;max-height:90vh;overflow:auto;padding:24px}
+  .modal h2{margin-top:0}
+  .kv{display:grid;grid-template-columns:140px 1fr;gap:8px;margin:12px 0;font-size:14px}
+  .kv span:nth-child(odd){font-weight:600;color:#555}
+  .desc{background:#f4f6fa;padding:12px;border-radius:8px;white-space:pre-wrap;font-size:14px}
+  .hidden{display:none}
+  @media(max-width:800px){.filters{grid-template-columns:1fr 1fr}.stats{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<nav>🎓 Smart Campus Assistant - Submitted Requests</nav>
+
+<main>
+  <div class="stats" id="stats"></div>
+
+  <div class="card filters">
+    <div><label>Search</label><input id="f_q" placeholder="title, name, ID, ticket #"></div>
+    <div><label>Status</label><select id="f_status"></select></div>
+    <div><label>Category</label><select id="f_cat"></select></div>
+    <div><label>Priority</label><select id="f_pri"></select></div>
+    <div><label>From</label><input type="date" id="f_from"></div>
+    <div><label>To</label><input type="date" id="f_to"></div>
+  </div>
+
+  <div class="bar">
+    <span id="count"></span>
+    <span>
+      <button class="btn sec sm" onclick="clearFilters()">Clear Filters</button>
+      <button class="btn grn sm" onclick="exportCSV()">Export CSV</button>
+      <button class="btn sm" onclick="addSamples()">Load Sample Data</button>
+    </span>
+  </div>
+
+  <div class="wrap" id="table"></div>
+  <div class="pager">
+    <button class="btn sm" id="prev">Prev</button>
+    <span id="pageInfo"></span>
+    <button class="btn sm" id="next">Next</button>
+    <select id="pageSize" style="width:auto">
+      <option>10</option><option>25</option><option>50</option>
+    </select>
+  </div>
+</main>
+
+<div id="overlay" class="overlay hidden" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modal"></div>
+</div>
+
+<script>
+/* ---------- Config ---------- */
+const REQ_KEY = "campus_requests";      // shared with other features
+const CAT_KEY = "campus_categories";
+const STATUSES = ["Pending","In Progress","Resolved","Rejected"];
+const PRIORITIES = ["Low","Medium","High","Urgent"];
+const PRI_ORDER = {Urgent:0, High:1, Medium:2, Low:3};
+const DEFAULT_CATS = ["Classroom Issue","Academic Support","Lost Belongings","Maintenance Problem","Administrative Service"];
+
+/* ---------- Helpers ---------- */
+const $ = id => document.getElementById(id);
+const read = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch { return d; } };
+const getReqs = () => read(REQ_KEY, []);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const badge = s => `<span class="badge b-${String(s).replace(" ","-")}">${esc(s)}</span>`;
+const fillSel = (el, arr) => el.innerHTML = `<option value="">All</option>` + arr.map(x => `<option>${esc(x)}</option>`).join("");
+const dateOnly = r => {                     // ISO date from the created_at string
+  const d = new Date(r.created_at);
+  return isNaN(d) ? "" : d.toISOString().slice(0, 10);
+};
+
+function categoryList() {
+  const stored = read(CAT_KEY, null);
+  const names = stored ? stored.map(c => c.name) : DEFAULT_CATS;
+  getReqs().forEach(r => { if (r.category && !names.includes(r.category)) names.push(r.category); });
+  return names;
+}
+
+/* ---------- State ---------- */
+let sortKey = "id", sortDir = -1, page = 1;
+
+/* ---------- Filtering / sorting ---------- */
+function filtered() {
+  const q = $("f_q").value.trim().toLowerCase();
+  const st = $("f_status").value, ct = $("f_cat").value, pr = $("f_pri").value;
+  const from = $("f_from").value, to = $("f_to").value;
+
+  const rows = getReqs().filter(r => {
+    if (st && r.status !== st) return false;
+    if (ct && r.category !== ct) return false;
+    if (pr && r.priority !== pr) return false;
+    const d = dateOnly(r);
+    if (from && d && d < from) return false;
+    if (to && d && d > to) return false;
+    if (q && ![r.title, r.description, r.student_name, r.student_id, String(r.id)]
+          .some(x => String(x ?? "").toLowerCase().includes(q))) return false;
+    return true;
+  });
+
+  rows.sort((a, b) => {
+    let x = a[sortKey], y = b[sortKey];
+    if (sortKey === "priority") { x = PRI_ORDER[x]; y = PRI_ORDER[y]; }
+    if (sortKey === "created_at") { x = new Date(x); y = new Date(y); }
+    if (x < y) return -1 * sortDir;
+    if (x > y) return 1 * sortDir;
+    return 0;
+  });
+  return rows;
+}
+
+/* ---------- Render ---------- */
+function renderStats() {
+  const all = getReqs();
+  $("stats").innerHTML =
+    `<div onclick="quick('')"><b>${all.length}</b>Total</div>` +
+    STATUSES.map(s => `<div onclick="quick('${s}')"><b>${all.filter(r => r.status === s).length}</b>${s}</div>`).join("");
+}
+
+function render() {
+  renderStats();
+  const rows = filtered();
+  const size = +$("pageSize").value;
+  const pages = Math.max(1, Math.ceil(rows.length / size));
+  if (page > pages) page = pages;
+  const slice = rows.slice((page - 1) * size, page * size);
+
+  $("count").innerHTML = `<b>${rows.length}</b> request(s) found`;
+  $("pageInfo").textContent = `Page ${page} of ${pages}`;
+  $("prev").disabled = page <= 1;
+  $("next").disabled = page >= pages;
+
+  const arrow = k => sortKey === k ? (sortDir === 1 ? " ▲" : " ▼") : "";
+  const th = (k, label) => `<th onclick="sortBy('${k}')">${label}${arrow(k)}</th>`;
+
+  $("table").innerHTML = `<table><tr>
+      ${th("id","#")}${th("title","Title")}${th("student_name","Student")}${th("category","Category")}
+      ${th("priority","Priority")}${th("status","Status")}${th("created_at","Submitted")}
+    </tr>
+    ${slice.map(r => `<tr class="clickable" onclick="openModal(${r.id})">
+      <td>${r.id}</td>
+      <td><b>${esc(r.title)}</b><br><small>${esc(r.location) || ""}</small></td>
+      <td>${esc(r.student_name)}<br><small>${esc(r.student_id)}</small></td>
+      <td>${esc(r.category) || "<small>Uncategorized</small>"}</td>
+      <td class="p-${r.priority}">${esc(r.priority)}</td>
+      <td>${badge(r.status)}</td>
+      <td><small>${esc(r.created_at)}</small></td>
+    </tr>`).join("") || `<tr><td colspan="7">No requests found.</td></tr>`}
+  </table>`;
+}
+
+/* ---------- Actions ---------- */
+function sortBy(k) { sortDir = sortKey === k ? -sortDir : 1; sortKey = k; render(); }
+function quick(s) { $("f_status").value = s; page = 1; render(); }
+
+function clearFilters() {
+  ["f_q","f_status","f_cat","f_pri","f_from","f_to"].forEach(i => $(i).value = "");
+  page = 1; render();
+}
+
+function openModal(id) {
+  const r = getReqs().find(x => x.id === id);
+  if (!r) return;
+  $("modal").innerHTML = `
+    <h2>#${r.id} - ${esc(r.title)}</h2>
+    ${badge(r.status)}
+    <div class="kv">
+      <span>Student</span><span>${esc(r.student_name)} (${esc(r.student_id)})</span>
+      <span>Email</span><span>${esc(r.email) || "-"}</span>
+      <span>Category</span><span>${esc(r.category) || "Uncategorized"}</span>
+      <span>Priority</span><span class="p-${r.priority}">${esc(r.priority)}</span>
+      <span>Location</span><span>${esc(r.location) || "-"}</span>
+      <span>Submitted</span><span>${esc(r.created_at)}</span>
+      <span>Last updated</span><span>${esc(r.updated_at)}</span>
+    </div>
+    <b>Description</b><div class="desc">${esc(r.description)}</div>
+    <br><b>Admin remarks</b><div class="desc">${esc(r.remarks) || "No remarks yet."}</div>
+    <br><button class="btn" onclick="closeModal()">Close</button>`;
+  $("overlay").classList.remove("hidden");
+}
+function closeModal() { $("overlay").classList.add("hidden"); }
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+function exportCSV() {
+  const rows = filtered();
+  if (!rows.length) return alert("Nothing to export.");
+  const cols = ["id","student_id","student_name","email","category","priority","status","location","title","description","remarks","created_at","updated_at"];
+  const cell = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const csv = [cols.join(","), ...rows.map(r => cols.map(c => cell(r[c])).join(","))].join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], {type: "text/csv"}));
+  a.download = "requests.csv";
+  a.click();
+}
+
+function addSamples() {
+  const S = [
+    ["WiFi not working in library","Cannot connect to the internet.","Maintenance Problem","High","Pending"],
+    ["Projector broken in room 502","Projector does not turn on.","Classroom Issue","Medium","In Progress"],
+    ["Lost wallet","Black wallet with ID card.","Lost Belongings","Low","Resolved"],
+    ["Need official transcript","Requesting transcript, fee paid.","Administrative Service","Medium","Pending"],
+    ["Midterm result missing","Marks are not on the portal.","Academic Support","Urgent","Pending"],
+    ["Water leak in washroom","3rd floor pipe is leaking.","Maintenance Problem","Urgent","In Progress"]
+  ];
+  const data = getReqs();
+  let id = data.length ? Math.max(...data.map(r => r.id)) : 0;
+  S.forEach(([title, description, category, priority, status], i) => data.push({
+    id: ++id, student_id: "232-35-" + (300 + i), student_name: "Sample Student " + (i + 1),
+    email: "student" + i + "@diu.edu.bd", title, description, category, priority, status,
+    location: "Building " + (i + 1), remarks: status === "Resolved" ? "Found and returned." : "",
+    created_at: new Date(Date.now() - i * 86400000).toLocaleString(), updated_at: new Date().toLocaleString()
+  }));
+  localStorage.setItem(REQ_KEY, JSON.stringify(data));
+  init();
+}
+
+/* ---------- Init ---------- */
+function init() {
+  const keep = ["f_status","f_cat","f_pri"].map(i => $(i).value);
+  fillSel($("f_status"), STATUSES);
+  fillSel($("f_cat"), categoryList());
+  fillSel($("f_pri"), PRIORITIES);
+  ["f_status","f_cat","f_pri"].forEach((i, n) => $(i).value = keep[n]);
+  render();
+}
+
+["f_q","f_status","f_cat","f_pri","f_from","f_to","pageSize"].forEach(i =>
+  $(i).addEventListener("input", () => { page = 1; render(); }));
+$("prev").onclick = () => { page--; render(); };
+$("next").onclick = () => { page++; render(); };
+window.addEventListener("storage", init);   // live-sync when another tab changes data
+
+init();
+</script>
+</body>
+</html>
