@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Campus - Status Notifications</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:system-ui,Arial,sans-serif;margin:0;background:#f4f6fa;color:#222}
+  nav{background:#1f3a93;padding:12px 24px;color:#fff;display:flex;align-items:center;gap:14px}
+  nav .brand{font-weight:700;font-size:18px;margin-right:auto}
+  .bell{position:relative;font-size:22px;cursor:pointer;background:none;border:0;color:#fff}
+  .bell span{position:absolute;top:-6px;right:-8px;background:#e74c3c;color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px}
+  nav .who{font-size:14px}
+  nav .link{background:transparent;color:#fff;border:1px solid #ffffff66;padding:5px 10px;border-radius:6px;cursor:pointer;font:inherit;font-size:13px}
+  main{max-width:860px;margin:24px auto;padding:0 16px}
+  .card{background:#fff;border-radius:10px;padding:18px;box-shadow:0 1px 4px #0002;margin-bottom:16px}
+  h3{margin:0 0 12px}
+  label{display:block;font-weight:600;font-size:13px;margin-top:8px}
+  input,select{width:100%;padding:8px;margin-top:4px;border:1px solid #ccd;border-radius:6px;font:inherit}
+  input[type=checkbox]{width:auto;margin:0}
+  .btn{background:#1f3a93;color:#fff;border:0;padding:9px 14px;border-radius:6px;cursor:pointer;font:inherit}
+  .btn.sec{background:#6b7280}.btn.red{background:#c0392b}.btn.sm{padding:5px 10px;font-size:13px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  .bar .sp{margin-left:auto}
+  .hidden{display:none}
+  .n{display:flex;gap:12px;padding:12px;border-bottom:1px solid #e9ecf3;border-left:4px solid transparent;cursor:pointer}
+  .n:hover{background:#f6f8fd}
+  .n.unread{background:#eef4ff;border-left-color:#2a7de1}
+  .n .ic{font-size:24px;line-height:1}
+  .n .body{flex:1}
+  .n .meta{font-size:12px;color:#666;margin-top:3px}
+  .n .note{background:#f4f6fa;border-radius:6px;padding:6px 10px;font-size:13px;margin-top:6px}
+  .badge{padding:2px 9px;border-radius:12px;font-size:12px;color:#fff;white-space:nowrap}
+  .b-Pending{background:#e69500}.b-In-Progress{background:#2a7de1}.b-Resolved{background:#2e9e4f}.b-Rejected{background:#c0392b}
+  .empty{text-align:center;color:#888;padding:30px 0}
+  .tg{display:flex;gap:8px;align-items:center;font-size:14px;font-weight:600;margin:6px 0}
+  #toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:10px;z-index:50;max-width:340px}
+  .toast{background:#1f2a44;color:#fff;padding:12px 14px;border-radius:10px;box-shadow:0 4px 14px #0004;font-size:14px;animation:in .25s}
+  .toast b{display:block;margin-bottom:2px}
+  @keyframes in{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
+  details summary{cursor:pointer;font-weight:600}
+  small{color:#666}
+  @media(max-width:600px){.row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="brand">🎓 Smart Campus Assistant</span>
+  <span class="who hidden" id="who"></span>
+  <button class="bell hidden" id="bell" title="Notifications" onclick="document.getElementById('list').scrollIntoView({behavior:'smooth'})">🔔<span id="count" class="hidden">0</span></button>
+  <button class="link hidden" id="switchBtn" onclick="signOut()">Switch ID</button>
+</nav>
+
+<main>
+  <!-- Student ID gate -->
+  <div id="gate" class="card" style="max-width:420px;margin:40px auto">
+    <h3>View Your Notifications</h3>
+    <form id="gateForm"><label>Student ID</label><input id="sid" required placeholder="e.g. 232-35-345">
+      <p><button class="btn" type="submit">Continue</button></p></form>
+  </div>
+
+  <div id="app" class="hidden">
+    <div class="card" id="list">
+      <h3>Notifications</h3>
+      <div class="bar">
+        <select id="filter" style="width:auto;margin:0"><option value="all">All</option><option value="unread">Unread only</option></select>
+        <span class="sp"></span>
+        <button class="btn sm" onclick="markAll()">Mark all read</button>
+        <button class="btn red sm" onclick="clearAll()">Clear all</button>
+      </div>
+      <div id="items"></div>
+    </div>
+
+    <div class="card">
+      <h3>Notification Settings</h3>
+      <label class="tg"><input type="checkbox" id="p_toast"> Show pop-up alerts on this page</label>
+      <label class="tg"><input type="checkbox" id="p_browser"> Browser / desktop notifications</label>
+      <small id="permInfo"></small>
+    </div>
+
+    <div class="card">
+      <details>
+        <summary>Demo only: change a request's status to trigger a notification</summary>
+        <div class="row" style="margin-top:10px">
+          <div><label>Request</label><select id="d_req"></select></div>
+          <div><label>New status</label><select id="d_status">
+            <option>Pending</option><option>In Progress</option><option>Resolved</option><option>Rejected</option></select></div>
+        </div>
+        <label>Remark</label><input id="d_note" placeholder="Message for the student">
+        <p><button class="btn" onclick="simulate()">Apply Change</button>
+        <button class="btn sec" onclick="addSamples()">Load Sample Requests</button></p>
+      </details>
+    </div>
+  </div>
+</main>
+
+<div id="toasts"></div>
+
+<script>
+/* ---------- Config ---------- */
+const REQ_KEY   = "campus_requests";          // shared with other features
+const NOTIF_KEY = "campus_notifications";
+const SNAP_KEY  = "campus_status_snapshot";   // last known status of each request
+const SID_KEY   = "campus_notif_student";
+const PREF_KEY  = "campus_notif_prefs";
+const MAX_NOTIFS = 200;
+const ICON = {Pending:"⏳", "In Progress":"🔧", Resolved:"✅", Rejected:"❌"};
+
+/* ---------- Helpers ---------- */
+const $ = id => document.getElementById(id);
+const read = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch { return d; } };
+const write = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const now = () => new Date().toLocaleString();
+const badge = s => `<span class="badge b-${String(s).replace(" ","-")}">${esc(s)}</span>`;
+const sid = () => localStorage.getItem(SID_KEY) || "";
+const prefs = () => ({ toast: true, browser: false, ...read(PREF_KEY, {}) });
+
+function ago(ts) {
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return Math.floor(s / 60) + " min ago";
+  if (s < 86400) return Math.floor(s / 3600) + " h ago";
+  return new Date(ts).toLocaleDateString();
+}
+
+/* ---------- Core: detect status changes & create notifications ---------- */
+function latestNote(r) {
+  if (Array.isArray(r.history) && r.history.length) return r.history[r.history.length - 1].note || "";
+  return r.remarks || "";
+}
+
+function detectChanges() {
+  const reqs = read(REQ_KEY, []);
+  const snap = read(SNAP_KEY, null);
+  const newSnap = {};
+  reqs.forEach(r => newSnap[r.id] = r.status);
+
+  if (snap === null) { write(SNAP_KEY, newSnap); return []; }   // first run: just record the baseline
+
+  const existing = read(NOTIF_KEY, []);
+  const created = [];
+  reqs.forEach(r => {
+    const old = snap[r.id];
+    if (old === undefined || old === r.status) return;          // new request or no change
+    const key = `${r.id}|${r.status}|${r.updated_at}`;
+    if (existing.some(n => n.key === key)) return;              // avoid duplicates across tabs
+    created.push({
+      id: Date.now() + "-" + r.id + "-" + Math.random().toString(36).slice(2, 6),
+      key, student_id: r.student_id, request_id: r.id, title: r.title,
+      old, status: r.status, note: latestNote(r), at: now(), ts: Date.now(), read: false
+    });
+  });
+
+  write(SNAP_KEY, newSnap);
+  if (created.length) {
+    write(NOTIF_KEY, [...created, ...existing].slice(0, MAX_NOTIFS));
+    created.filter(n => n.student_id === sid()).forEach(alertUser);
+  }
+  return created;
+}
+
+/* ---------- Alerts ---------- */
+function alertUser(n) {
+  const p = prefs();
+  const text = `Request #${n.request_id} "${n.title}" is now ${n.status}.`;
+  if (p.toast) {
+    const t = document.createElement("div");
+    t.className = "toast";
+    t.innerHTML = `<b>${ICON[n.status] || "🔔"} Status updated</b>${esc(text)}`;
+    $("toasts").appendChild(t);
+    setTimeout(() => t.remove(), 6000);
+  }
+  if (p.browser && "Notification" in window && Notification.permission === "granted") {
+    try { new Notification("Smart Campus: status updated", { body: text + (n.note ? " " + n.note : "") }); } catch {}
+  }
+}
+
+/* ---------- Render ---------- */
+function mine() { return read(NOTIF_KEY, []).filter(n => n.student_id === sid()); }
+
+function render() {
+  if (!sid()) return;
+  const all = mine(), unread = all.filter(n => !n.read).length;
+  const c = $("count");
+  c.textContent = unread > 99 ? "99+" : unread;
+  c.classList.toggle("hidden", unread === 0);
+  document.title = (unread ? `(${unread}) ` : "") + "Smart Campus - Status Notifications";
+
+  const rows = $("filter").value === "unread" ? all.filter(n => !n.read) : all;
+  $("items").innerHTML = rows.map(n => `
+    <div class="n ${n.read ? "" : "unread"}" onclick="toggleRead('${n.id}')">
+      <div class="ic">${ICON[n.status] || "🔔"}</div>
+      <div class="body">
+        <b>Request #${n.request_id}: ${esc(n.title)}</b><br>
+        Status changed from ${badge(n.old)} to ${badge(n.status)}
+        ${n.note ? `<div class="note">${esc(n.note)}</div>` : ""}
+        <div class="meta">${ago(n.ts)} | ${esc(n.at)} ${n.read ? "" : "| <b>New</b>"}</div>
+      </div>
+    </div>`).join("") || `<div class="empty">${$("filter").value === "unread" ? "No unread notifications." : "No notifications yet. You will see an alert here whenever one of your requests changes status."}</div>`;
+
+  // demo dropdown
+  const reqs = read(REQ_KEY, []).filter(r => r.student_id === sid());
+  const keep = $("d_req").value;
+  $("d_req").innerHTML = reqs.map(r => `<option value="${r.id}">#${r.id} ${esc(r.title)} (${esc(r.status)})</option>`).join("") || `<option value="">No requests for this ID</option>`;
+  if (keep) $("d_req").value = keep;
+}
+
+function updatePermInfo() {
+  const el = $("permInfo");
+  if (!("Notification" in window)) { el.textContent = "This browser does not support desktop notifications."; return; }
+  el.textContent = {granted: "Desktop notifications are allowed.", denied: "Desktop notifications are blocked in your browser settings.", default: "You will be asked for permission when you turn this on."}[Notification.permission];
+}
+
+/* ---------- Actions ---------- */
+function toggleRead(id) {
+  const all = read(NOTIF_KEY, []), n = all.find(x => x.id === id);
+  if (n) { n.read = !n.read; write(NOTIF_KEY, all); render(); }
+}
+function markAll() {
+  const all = read(NOTIF_KEY, []);
+  all.forEach(n => { if (n.student_id === sid()) n.read = true; });
+  write(NOTIF_KEY, all); render();
+}
+function clearAll() {
+  if (!confirm("Delete all your notifications?")) return;
+  write(NOTIF_KEY, read(NOTIF_KEY, []).filter(n => n.student_id !== sid()));
+  render();
+}
+
+function signOut() { localStorage.removeItem(SID_KEY); sync(); }
+
+function sync() {
+  const id = sid();
+  $("gate").classList.toggle("hidden", !!id);
+  ["app","who","bell","switchBtn"].forEach(x => $(x).classList.toggle("hidden", !id));
+  $("who").textContent = id ? "Student: " + id : "";
+  if (id) { $("p_toast").checked = prefs().toast; $("p_browser").checked = prefs().browser; updatePermInfo(); render(); }
+}
+
+$("gateForm").addEventListener("submit", e => {
+  e.preventDefault();
+  localStorage.setItem(SID_KEY, $("sid").value.trim());
+  sync();
+});
+$("filter").addEventListener("change", render);
+$("p_toast").addEventListener("change", e => write(PREF_KEY, {...prefs(), toast: e.target.checked}));
+$("p_browser").addEventListener("change", async e => {
+  if (e.target.checked && "Notification" in window && Notification.permission !== "granted") {
+    const res = await Notification.requestPermission();
+    if (res !== "granted") e.target.checked = false;
+  }
+  write(PREF_KEY, {...prefs(), browser: e.target.checked});
+  updatePermInfo();
+});
+
+/* ---------- Demo helpers ---------- */
+function simulate() {
+  const id = +$("d_req").value;
+  const data = read(REQ_KEY, []), r = data.find(x => x.id === id);
+  if (!r) return alert("Choose a request first.");
+  const status = $("d_status").value, note = $("d_note").value.trim();
+  if (status === r.status && !note) return alert("Pick a different status.");
+  if (!Array.isArray(r.history)) r.history = [{status: "Pending", note: "Request submitted.", at: r.created_at}];
+  r.history.push({status, note: note || "Status updated.", at: now()});
+  r.status = status; r.remarks = note || r.remarks; r.updated_at = now();
+  write(REQ_KEY, data);
+  $("d_note").value = "";
+  detectChanges(); render();
+}
+
+function addSamples() {
+  const data = read(REQ_KEY, []);
+  let id = data.length ? Math.max(...data.map(r => r.id)) : 0;
+  [["WiFi not working in library","IT"],["Projector broken in room 502","Classroom"],["Lost black wallet","Lost & Found"]].forEach(([title, category]) =>
+    data.push({ id: ++id, student_id: sid(), student_name: "Student", email: "", title, description: "Sample request.",
+      category, priority: "Medium", status: "Pending", location: "", remarks: "", created_ts: Date.now(),
+      created_at: now(), updated_at: now() }));
+  write(REQ_KEY, data);
+  const snap = read(SNAP_KEY, {}); data.forEach(r => { if (snap[r.id] === undefined) snap[r.id] = r.status; });
+  write(SNAP_KEY, snap);                       // record baseline so new samples don't notify
+  render();
+}
+
+/* ---------- Init ---------- */
+window.addEventListener("storage", () => { detectChanges(); render(); });   // other tab changed data
+setInterval(() => { detectChanges(); render(); }, 3000);                    // also catches same-tab changes & updates "ago"
+detectChanges();
+sync();
+</script>
+</body>
+</html>
