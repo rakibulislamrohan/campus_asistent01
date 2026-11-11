@@ -1,13 +1,262 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>campus_asistent_system</title>
-    <H1>campus assistent system</H1>
+    <title>Smart Campus Assistant System</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    
+
+<header class="header">
+    <div class="container nav">
+        <a href="#home" class="logo">Smart Campus</a>
+
+        <nav>
+            <a href="#home">Home</a>
+            <a href="#register">Register</a>
+            <a href="#login">Login</a>
+            <a href="#submit">Submit Request</a>
+            <a href="#track">Track Record</a>
+            <a href="#admin" id="adminNav" class="hidden">Admin</a>
+        </nav>
+
+        <button id="logoutBtn" class="btn btn-small hidden">Logout</button>
+    </div>
+</header>
+
+<main class="container">
+
+    <!-- HOME PAGE -->
+    <section id="home" class="page active">
+        <div class="hero">
+            <div>
+                <span class="tag">SMART CAMPUS ASSISTANT</span>
+                <h1>Your Campus, <span>One Smart Platform.</span></h1>
+                <p>
+                    Submit campus-related problems, track your requests
+                    and get assistance from the university administration.
+                </p>
+                <a href="#submit" class="btn">Submit a Request</a>
+                <a href="#track" class="btn btn-outline">Track Request</a>
+            </div>
+        </div>
+
+        <h2 class="section-title">Our Features</h2>
+
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h3>📝 Submit Request</h3>
+                <p>Submit academic, technical and campus-related problems.</p>
+            </div>
+
+            <div class="feature-card">
+                <h3>📍 Track Record</h3>
+                <p>Check the current status of your submitted requests.</p>
+            </div>
+
+            <div class="feature-card">
+                <h3>⚙️ Admin Management</h3>
+                <p>Administrators can manage and update student requests.</p>
+            </div>
+
+            <div class="feature-card">
+                <h3>🔎 Search Requests</h3>
+                <p>Search and filter requests easily.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- REGISTRATION PAGE -->
+    <section id="register" class="page">
+        <div class="form-card">
+            <h2>Create Student Account</h2>
+            <p class="muted">Register to use the Smart Campus Assistant.</p>
+
+            <form id="registerForm">
+                <label>Full Name</label>
+                <input type="text" id="regName" placeholder="Enter your name" required>
+
+                <label>Student ID</label>
+                <input type="text" id="regStudentId" placeholder="Enter student ID" required>
+
+                <label>Email Address</label>
+                <input type="email" id="regEmail" placeholder="Enter email" required>
+
+                <label>Password</label>
+                <input type="password" id="regPassword" placeholder="Minimum 6 characters" minlength="6" required>
+
+                <button type="submit" class="btn full">Register</button>
+            </form>
+
+            <p class="form-footer">
+                Already have an account? <a href="#login">Login</a>
+            </p>
+        </div>
+    </section>
+
+    <!-- LOGIN PAGE -->
+    <section id="login" class="page">
+        <div class="form-card">
+            <h2>Welcome Back</h2>
+            <p class="muted">Login to your account.</p>
+
+            <form id="loginForm">
+                <label>Email Address</label>
+                <input type="email" id="loginEmail" placeholder="Enter email" required>
+
+                <label>Password</label>
+                <input type="password" id="loginPassword" placeholder="Enter password" required>
+
+                <button type="submit" class="btn full">Login</button>
+            </form>
+
+            <p class="form-footer">
+                Don't have an account? <a href="#register">Register</a>
+            </p>
+
+            <div class="demo-info">
+                <strong>Demo Admin Login</strong>
+                <p>Email: admin@campus.com</p>
+                <p>Password: admin123</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- SUBMIT REQUEST PAGE -->
+    <section id="submit" class="page">
+        <div class="form-card wide">
+            <h2>Submit a Campus Request</h2>
+            <p class="muted">Describe your problem and submit it to the administration.</p>
+
+            <form id="requestForm">
+                <label>Request Title</label>
+                <input type="text" id="requestTitle" placeholder="Enter request title" required>
+
+                <label>Request Category</label>
+                <select id="requestCategory" required>
+                    <option value="">Select category</option>
+                    <option>Academic</option>
+                    <option>Technical Support</option>
+                    <option>Library</option>
+                    <option>Transport</option>
+                    <option>Administration</option>
+                    <option>Other</option>
+                </select>
+
+                <label>Location</label>
+                <input type="text" id="requestLocation" placeholder="Enter campus location" required>
+
+                <label>Description</label>
+                <textarea id="requestDescription" rows="5"
+                    placeholder="Describe your problem..." required></textarea>
+
+                <button type="submit" class="btn full">Submit Request</button>
+            </form>
+        </div>
+    </section>
+
+    <!-- TRACK RECORD PAGE -->
+    <section id="track" class="page">
+        <h2 class="section-title">Track Your Requests</h2>
+        <p class="muted">View the status of your submitted requests.</p>
+
+        <div id="trackLoginMessage" class="notice hidden">
+            Please <a href="#login">login</a> to track your requests.
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Request ID</th>
+                        <th>Title</th>
+                        <th>Category</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="studentRequestTable">
+                    <tr><td colspan="5">No requests found.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- ADMIN DASHBOARD -->
+    <section id="admin" class="page">
+        <h2 class="section-title">Admin Dashboard</h2>
+        <p class="muted">Manage student requests and update their status.</p>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3 id="totalCount">0</h3>
+                <p>Total Requests</p>
+            </div>
+            <div class="stat-card">
+                <h3 id="pendingCount">0</h3>
+                <p>Pending</p>
+            </div>
+            <div class="stat-card">
+                <h3 id="progressCount">0</h3>
+                <p>In Progress</p>
+            </div>
+            <div class="stat-card">
+                <h3 id="resolvedCount">0</h3>
+                <p>Resolved</p>
+            </div>
+        </div>
+
+        <div class="filter-area">
+            <input type="search" id="searchInput" placeholder="Search by ID, title or student...">
+
+            <select id="statusFilter">
+                <option value="All">All Status</option>
+                <option value="Pending">Pending</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Resolved">Resolved</option>
+                <option value="Rejected">Rejected</option>
+            </select>
+
+            <select id="categoryFilter">
+                <option value="All">All Categories</option>
+                <option>Academic</option>
+                <option>Technical Support</option>
+                <option>Library</option>
+                <option>Transport</option>
+                <option>Administration</option>
+                <option>Other</option>
+            </select>
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Student</th>
+                        <th>Title</th>
+                        <th>Category</th>
+                        <th>Description</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                        <th>Update</th>
+                    </tr>
+                </thead>
+                <tbody id="adminRequestTable">
+                    <tr><td colspan="8">No requests found.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+</main>
+
+<footer class="footer">
+    <p>© 2026 Smart Campus Assistant System. All Rights Reserved.</p>
+</footer>
+
+<script src="script.js"></script>
 </body>
 </html>
