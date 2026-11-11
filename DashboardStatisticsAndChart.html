@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Campus - Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:system-ui,Arial,sans-serif;margin:0;background:#f4f6fa;color:#222}
+  nav{background:#1f3a93;padding:14px 24px;color:#fff;font-weight:700;font-size:18px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  nav .right{display:flex;gap:8px;align-items:center}
+  nav select,nav button{padding:6px 10px;border-radius:6px;border:1px solid #ffffff66;background:#fff;color:#1f3a93;font:inherit;cursor:pointer}
+  nav button{background:transparent;color:#fff}
+  main{max-width:1200px;margin:24px auto;padding:0 16px}
+  .card{background:#fff;border-radius:10px;padding:18px;box-shadow:0 1px 4px #0002}
+  h3{margin:0 0 12px;font-size:16px}
+  label{display:block;font-weight:600;font-size:13px}
+  input{width:100%;padding:8px;margin-top:4px;border:1px solid #ccd;border-radius:6px;font:inherit}
+  .btn{background:#1f3a93;color:#fff;border:0;padding:9px 14px;border-radius:6px;cursor:pointer;font:inherit}
+  .btn.sec{background:#6b7280}
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px}
+  .kpi{background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 4px #0002;border-left:5px solid #1f3a93}
+  .kpi b{font-size:26px;display:block}.kpi small{color:#666}
+  .k-open{border-color:#e69500}.k-res{border-color:#2e9e4f}.k-rej{border-color:#c0392b}.k-over{border-color:#000}.k-time{border-color:#8e44ad}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px}
+  .span2{grid-column:span 2}.span3{grid-column:span 3}
+  .chart{position:relative;height:280px}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px;border-bottom:1px solid #e3e6ee;text-align:left;font-size:14px}
+  th{background:#eef1f9}
+  .badge{padding:3px 10px;border-radius:12px;font-size:12px;color:#fff;white-space:nowrap}
+  .b-Pending{background:#e69500}.b-In-Progress{background:#2a7de1}.b-Resolved{background:#2e9e4f}.b-Rejected{background:#c0392b}
+  .hidden{display:none}
+  .alert{background:#fdecea;border-left:4px solid #c0392b;padding:10px 14px;border-radius:4px;margin-bottom:14px}
+  .empty{color:#888;text-align:center;padding:40px 0}
+  small{color:#666}
+  @media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:span 1}}
+</style>
+</head>
+<body>
+<nav>
+  <span>🎓 Smart Campus Dashboard</span>
+  <span class="right hidden" id="tools">
+    <select id="range">
+      <option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option>
+      <option value="90">Last 90 days</option><option value="0">All time</option>
+    </select>
+    <button onclick="addSamples()">Load Sample Data</button>
+    <button onclick="logout()">Logout</button>
+  </span>
+</nav>
+
+<main>
+  <div id="msg"></div>
+
+  <div id="login" class="card" style="max-width:380px;margin:40px auto">
+    <h3>Authority Login</h3>
+    <form id="loginForm"><label>Password</label><input type="password" id="pw" required>
+      <p><button class="btn" type="submit">Login</button></p></form>
+    <small>Default password: admin123</small>
+  </div>
+
+  <div id="panel" class="hidden">
+    <div class="kpis" id="kpis"></div>
+
+    <div class="grid">
+      <div class="card span2"><h3>Requests Over Time</h3><div class="chart"><canvas id="cTrend"></canvas></div></div>
+      <div class="card"><h3>Status Breakdown</h3><div class="chart"><canvas id="cStatus"></canvas></div></div>
+      <div class="card span2"><h3>Requests by Category</h3><div class="chart"><canvas id="cCat"></canvas></div></div>
+      <div class="card"><h3>Priority Distribution</h3><div class="chart"><canvas id="cPri"></canvas></div></div>
+      <div class="card span2"><h3>Avg Resolution Time by Category <small>(hours)</small></h3><div class="chart"><canvas id="cTime"></canvas></div></div>
+      <div class="card"><h3>Top Locations</h3><div class="chart"><canvas id="cLoc"></canvas></div></div>
+      <div class="card span3"><h3>Recent Requests</h3><div id="recent"></div></div>
+    </div>
+  </div>
+</main>
+
+<script>
+/* ---------- Config ---------- */
+const REQ_KEY = "campus_requests";          // shared with other features
+const CAT_KEY = "campus_categories";
+const SLA_KEY = "campus_sla";
+const PASSWORD = "admin123";
+const STATUSES = ["Pending","In Progress","Resolved","Rejected"];
+const PRIORITIES = ["Urgent","High","Medium","Low"];
+const STATUS_COLOR = {Pending:"#e69500","In Progress":"#2a7de1",Resolved:"#2e9e4f",Rejected:"#c0392b"};
+const PRI_COLOR = {Urgent:"#c0392b",High:"#e67e22",Medium:"#2a7de1",Low:"#2e9e4f"};
+const DEFAULT_SLA = {Urgent:4, High:24, Medium:72, Low:168};
+const PALETTE = ["#2a7de1","#8e44ad","#e67e22","#c0392b","#16a085","#2e9e4f","#7f8c8d","#d35400","#f39c12","#95a5a6"];
+
+/* ---------- Helpers ---------- */
+const $ = id => document.getElementById(id);
+const read = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch { return d; } };
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ts = r => r.created_ts || Date.parse(r.created_at) || Date.now();
+const isOpen = r => r.status === "Pending" || r.status === "In Progress";
+const dayKey = t => { const d = new Date(t); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+const badge = s => `<span class="badge b-${String(s).replace(" ","-")}">${esc(s)}</span>`;
+const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
+
+function resolvedTs(r) {                      // when the request was resolved (ms) or null
+  if (r.status !== "Resolved") return null;
+  if (Array.isArray(r.history)) {
+    const h = [...r.history].reverse().find(x => x.status === "Resolved");
+    if (h) { const t = Date.parse(h.at); if (t) return t; }
+  }
+  return r.resolved_ts || Date.parse(r.updated_at) || null;
+}
+
+function isOverdue(r) {
+  if (!isOpen(r)) return false;
+  const sla = { ...DEFAULT_SLA, ...read(SLA_KEY, {}) }[r.priority] || 72;
+  return (Date.now() - ts(r)) / 3600000 >= sla;
+}
+
+function fmtHours(h) {
+  if (!h) return "-";
+  return h >= 48 ? (h / 24).toFixed(1) + " d" : h.toFixed(1) + " h";
+}
+
+function catColors(names) {
+  const stored = read(CAT_KEY, []);
+  return names.map((n, i) => (stored.find(c => c.name === n) || {}).color || PALETTE[i % PALETTE.length]);
+}
+
+/* ---------- Auth ---------- */
+function syncAuth() {
+  const ok = sessionStorage.getItem("campus_admin") === "1";
+  $("login").classList.toggle("hidden", ok);
+  $("panel").classList.toggle("hidden", !ok);
+  $("tools").classList.toggle("hidden", !ok);
+  if (ok) render();
+}
+$("loginForm").addEventListener("submit", e => {
+  e.preventDefault();
+  if ($("pw").value === PASSWORD) { sessionStorage.setItem("campus_admin", "1"); $("pw").value = ""; syncAuth(); }
+  else { $("msg").innerHTML = `<div class="alert">Wrong password.</div>`; setTimeout(() => $("msg").innerHTML = "", 3000); }
+});
+function logout() { sessionStorage.removeItem("campus_admin"); syncAuth(); }
+
+/* ---------- Charts ---------- */
+const charts = {};
+function draw(id, config) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart($(id), config);
+}
+const noLegend = { plugins: { legend: { display: false } } };
+
+function countBy(rows, key, fallback) {
+  const m = {};
+  rows.forEach(r => { const k = r[key] || fallback; m[k] = (m[k] || 0) + 1; });
+  return m;
+}
+
+/* ---------- Render ---------- */
+function render() {
+  if (typeof Chart === "undefined") {
+    $("kpis").innerHTML = `<div class="alert" style="grid-column:1/-1">Charts could not load (Chart.js needs an internet connection).</div>`;
+    return;
+  }
+  const days = +$("range").value;
+  const all = read(REQ_KEY, []);
+  const rows = days ? all.filter(r => ts(r) >= Date.now() - days * 86400000) : all;
+
+  /* KPIs */
+  const open = rows.filter(isOpen).length;
+  const resolved = rows.filter(r => r.status === "Resolved");
+  const rejected = rows.filter(r => r.status === "Rejected").length;
+  const overdue = rows.filter(isOverdue).length;
+  const times = resolved.map(r => { const t = resolvedTs(r); return t ? (t - ts(r)) / 3600000 : null; }).filter(x => x !== null && x >= 0);
+  const rate = rows.length ? Math.round(resolved.length / rows.length * 100) : 0;
+  $("kpis").innerHTML = `
+    <div class="kpi"><b>${rows.length}</b><small>Total requests</small></div>
+    <div class="kpi k-open"><b>${open}</b><small>Open</small></div>
+    <div class="kpi k-res"><b>${resolved.length}</b><small>Resolved (${rate}%)</small></div>
+    <div class="kpi k-rej"><b>${rejected}</b><small>Rejected</small></div>
+    <div class="kpi k-over"><b>${overdue}</b><small>Overdue (past SLA)</small></div>
+    <div class="kpi k-time"><b>${fmtHours(avg(times))}</b><small>Avg resolution time</small></div>`;
+
+  if (!rows.length) {
+    ["cTrend","cStatus","cCat","cPri","cTime","cLoc"].forEach(id => charts[id] && (charts[id].destroy(), delete charts[id]));
+    $("recent").innerHTML = `<div class="empty">No data for this period. Click "Load Sample Data" to try the dashboard.</div>`;
+    return;
+  }
+
+  /* Trend: created vs resolved per day */
+  const span = days || 30;
+  const labels = [], created = [], solved = [];
+  for (let i = span - 1; i >= 0; i--) {
+    const k = dayKey(Date.now() - i * 86400000);
+    labels.push(k.slice(5));
+    created.push(all.filter(r => dayKey(ts(r)) === k).length);
+    solved.push(all.filter(r => { const t = resolvedTs(r); return t && dayKey(t) === k; }).length);
+  }
+  draw("cTrend", { type: "line", data: { labels, datasets: [
+    { label: "Submitted", data: created, borderColor: "#2a7de1", backgroundColor: "#2a7de122", fill: true, tension: .3 },
+    { label: "Resolved", data: solved, borderColor: "#2e9e4f", backgroundColor: "#2e9e4f22", fill: true, tension: .3 }
+  ]}, options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+
+  /* Status doughnut */
+  const sc = countBy(rows, "status", "Pending");
+  draw("cStatus", { type: "doughnut", data: { labels: STATUSES,
+    datasets: [{ data: STATUSES.map(s => sc[s] || 0), backgroundColor: STATUSES.map(s => STATUS_COLOR[s]) }] },
+    options: { maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } } });
+
+  /* Category bar */
+  const cc = countBy(rows, "category", "Uncategorized");
+  const cNames = Object.keys(cc).sort((a, b) => cc[b] - cc[a]);
+  draw("cCat", { type: "bar", data: { labels: cNames,
+    datasets: [{ data: cNames.map(n => cc[n]), backgroundColor: catColors(cNames) }] },
+    options: { ...noLegend, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+
+  /* Priority doughnut */
+  const pc = countBy(rows, "priority", "Medium");
+  draw("cPri", { type: "doughnut", data: { labels: PRIORITIES,
+    datasets: [{ data: PRIORITIES.map(p => pc[p] || 0), backgroundColor: PRIORITIES.map(p => PRI_COLOR[p]) }] },
+    options: { maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } } });
+
+  /* Avg resolution time by category */
+  const byCat = {};
+  resolved.forEach(r => {
+    const t = resolvedTs(r); if (!t || t < ts(r)) return;
+    (byCat[r.category || "Uncategorized"] ||= []).push((t - ts(r)) / 3600000);
+  });
+  const tNames = Object.keys(byCat);
+  draw("cTime", { type: "bar", data: { labels: tNames,
+    datasets: [{ data: tNames.map(n => +avg(byCat[n]).toFixed(1)), backgroundColor: catColors(tNames) }] },
+    options: { ...noLegend, indexAxis: "y", maintainAspectRatio: false, scales: { x: { beginAtZero: true } } } });
+
+  /* Top locations */
+  const lc = countBy(rows.filter(r => r.location), "location", "");
+  const lNames = Object.keys(lc).sort((a, b) => lc[b] - lc[a]).slice(0, 6);
+  draw("cLoc", { type: "bar", data: { labels: lNames,
+    datasets: [{ data: lNames.map(n => lc[n]), backgroundColor: "#8e44ad" }] },
+    options: { ...noLegend, indexAxis: "y", maintainAspectRatio: false, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } } });
+
+  /* Recent table */
+  const recent = [...rows].sort((a, b) => ts(b) - ts(a)).slice(0, 8);
+  $("recent").innerHTML = `<table><tr><th>#</th><th>Title</th><th>Student</th><th>Category</th><th>Priority</th><th>Status</th><th>Submitted</th></tr>
+    ${recent.map(r => `<tr><td>${r.id}</td><td>${esc(r.title)}</td><td>${esc(r.student_name)}</td>
+      <td>${esc(r.category) || "-"}</td><td>${esc(r.priority)}</td><td>${badge(r.status)}</td>
+      <td><small>${new Date(ts(r)).toLocaleString()}</small></td></tr>`).join("")}</table>`;
+}
+
+/* ---------- Sample data ---------- */
+function addSamples() {
+  const cats = ["IT","Classroom","Transport","Maintenance","Lost & Found","Academic Support","Administrative","Library"];
+  const locs = ["Building 1","Building 4","Library","Cafeteria","Hostel A","Main Gate","Lab 3"];
+  const titles = ["WiFi issue","Projector broken","Bus delayed","Water leak","Lost ID card","Result missing","Need transcript","Book not found"];
+  const pr = ["Low","Medium","Medium","High","Urgent"];
+  const rnd = n => Math.floor(Math.random() * n);
+  const data = read(REQ_KEY, []);
+  let id = data.length ? Math.max(...data.map(r => r.id)) : 0;
+  for (let i = 0; i < 45; i++) {
+    const created = Date.now() - Math.random() * 30 * 86400000;
+    const c = rnd(cats.length), roll = Math.random();
+    const status = roll < .5 ? "Resolved" : roll < .7 ? "In Progress" : roll < .92 ? "Pending" : "Rejected";
+    const r = { id: ++id, student_id: "232-35-" + (300 + rnd(60)), student_name: "Student " + (rnd(60) + 1), email: "",
+      title: titles[c], description: "Sample request " + id, category: cats[c], priority: pr[rnd(pr.length)],
+      location: locs[rnd(locs.length)], status, remarks: "", created_ts: created, created_at: new Date(created).toLocaleString(),
+      updated_at: new Date().toLocaleString() };
+    if (status === "Resolved") {
+      const done = Math.min(Date.now(), created + (2 + Math.random() * 90) * 3600000);
+      r.resolved_ts = done; r.updated_at = new Date(done).toLocaleString();
+      r.history = [{status:"Pending",note:"Request submitted.",at:r.created_at},{status:"Resolved",note:"Issue fixed.",at:r.updated_at}];
+    }
+    data.push(r);
+  }
+  localStorage.setItem(REQ_KEY, JSON.stringify(data));
+  render();
+}
+
+/* ---------- Init ---------- */
+$("range").addEventListener("change", render);
+window.addEventListener("storage", () => { if (!$("panel").classList.contains("hidden")) render(); });
+setInterval(() => { if (!$("panel").classList.contains("hidden")) render(); }, 60000);
+syncAuth();
+</script>
+</body>
+</html>

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Campus - Priority Based Complaint Management</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:system-ui,Arial,sans-serif;margin:0;background:#f4f6fa;color:#222}
+  nav{background:#1f3a93;padding:14px 24px;color:#fff;font-weight:700;font-size:18px;display:flex;justify-content:space-between;align-items:center}
+  nav button{background:transparent;color:#fff;border:1px solid #ffffff66;padding:6px 12px;border-radius:6px;cursor:pointer;font:inherit}
+  main{max-width:1150px;margin:24px auto;padding:0 16px}
+  .card{background:#fff;border-radius:10px;padding:18px;box-shadow:0 1px 4px #0002;margin-bottom:16px}
+  h3{margin-top:0}
+  label{display:block;font-weight:600;font-size:13px}
+  input,select{width:100%;padding:8px;margin-top:4px;border:1px solid #ccd;border-radius:6px;font:inherit}
+  .btn{background:#1f3a93;color:#fff;border:0;padding:9px 14px;border-radius:6px;cursor:pointer;font:inherit}
+  .btn.sec{background:#6b7280}.btn.red{background:#c0392b}.btn.grn{background:#2e9e4f}.btn.org{background:#e67e22}
+  .btn.sm{padding:5px 9px;font-size:13px;margin-top:5px}
+  .hidden{display:none}
+  .alert{background:#e7f6ec;border-left:4px solid #2e9e4f;padding:10px 14px;margin-bottom:14px;border-radius:4px}
+  .alert.err{background:#fdecea;border-color:#c0392b}
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px}
+  .tile{background:#fff;border-radius:10px;padding:14px;text-align:center;box-shadow:0 1px 4px #0002;border-top:5px solid #999;cursor:pointer}
+  .tile b{font-size:26px;display:block}.tile small{display:block}
+  .t-Urgent{border-color:#c0392b}.t-High{border-color:#e67e22}.t-Medium{border-color:#2a7de1}.t-Low{border-color:#2e9e4f}.t-Overdue{border-color:#000}
+  .filters{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr auto;gap:12px;align-items:end}
+  .wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden}
+  th,td{padding:10px;border-bottom:1px solid #e3e6ee;text-align:left;font-size:14px;vertical-align:top}
+  th{background:#eef1f9}
+  tr.overdue{background:#fff4f2}
+  .pri{padding:3px 10px;border-radius:12px;font-size:12px;color:#fff;font-weight:700}
+  .pr-Urgent{background:#c0392b}.pr-High{background:#e67e22}.pr-Medium{background:#2a7de1}.pr-Low{background:#2e9e4f}
+  .badge{padding:3px 10px;border-radius:12px;font-size:12px;color:#fff;white-space:nowrap}
+  .b-Pending{background:#e69500}.b-In-Progress{background:#2a7de1}.b-Resolved{background:#2e9e4f}.b-Rejected{background:#c0392b}
+  .sla{font-size:12px;font-weight:600;margin-top:4px}
+  .sla.ok{color:#2e9e4f}.sla.warn{color:#e67e22}.sla.bad{color:#c0392b}
+  .meter{height:6px;background:#e5e7ee;border-radius:3px;overflow:hidden;margin-top:4px;width:110px}
+  .meter i{display:block;height:100%}
+  .bar{display:flex;gap:8px;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+  .sla-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  small{color:#666}
+  @media(max-width:800px){.stats,.filters,.sla-grid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<nav><span>🎓 Priority Based Complaint Management</span><button id="logoutBtn" class="hidden" onclick="logout()">Logout</button></nav>
+
+<main>
+  <div id="msg"></div>
+
+  <!-- LOGIN -->
+  <div id="login" class="card" style="max-width:380px;margin:40px auto">
+    <h3>Authority Login</h3>
+    <form id="loginForm"><label>Password</label><input type="password" id="pw" required>
+      <p><button class="btn" type="submit">Login</button></p></form>
+    <small>Default password: admin123</small>
+  </div>
+
+  <!-- PANEL -->
+  <div id="panel" class="hidden">
+    <div class="stats" id="stats"></div>
+
+    <div class="card">
+      <h3>SLA Targets <small>(hours to resolve)</small></h3>
+      <div class="sla-grid" id="slaGrid"></div>
+      <button class="btn sm" onclick="saveSLA()">Save SLA</button>
+    </div>
+
+    <div class="card filters">
+      <div><label>Search</label><input id="f_q" placeholder="title / student / ticket #"></div>
+      <div><label>Priority</label><select id="f_pri"></select></div>
+      <div><label>Status</label><select id="f_status"></select></div>
+      <div><label>View</label><select id="f_view">
+        <option value="open">Open only</option><option value="overdue">Overdue only</option><option value="all">All (incl. closed)</option></select></div>
+      <button class="btn sec" onclick="clearFilters()">Clear</button>
+    </div>
+
+    <div class="bar">
+      <span id="count"></span>
+      <span>
+        <button class="btn grn sm" onclick="applySuggestions()">Apply Suggested Priorities</button>
+        <button class="btn org sm" onclick="escalateOverdue()">Escalate All Overdue</button>
+        <button class="btn sm" onclick="addSamples()">Load Sample Data</button>
+      </span>
+    </div>
+    <div class="wrap" id="queue"></div>
+  </div>
+</main>
+
+<script>
+/* ---------- Config ---------- */
+const REQ_KEY = "campus_requests";            // shared with other features
+const SLA_KEY = "campus_sla";
+const PASSWORD = "admin123";
+const PRIORITIES = ["Low","Medium","High","Urgent"];            // low -> high
+const STATUSES = ["Pending","In Progress","Resolved","Rejected"];
+const WEIGHT = {Urgent:1000, High:300, Medium:100, Low:10};
+const DEFAULT_SLA = {Urgent:4, High:24, Medium:72, Low:168};
+
+// keyword rules for suggested priority (checked top to bottom)
+const RULES = [
+  ["Urgent", ["fire","smoke","short circuit","electric shock","gas leak","injury","injured","emergency","harass","ragging","threat","ambulance","medical","unsafe","stuck in lift"]],
+  ["High",   ["exam","deadline","leak","no water","power cut","power outage","blackout","not working","broken","lift","result missing","fee","clearance","urgent","asap"]],
+  ["Low",    ["suggestion","feedback","idea","request for new","would like","improve","recommend"]]
+];
+
+/* ---------- Helpers ---------- */
+const $ = id => document.getElementById(id);
+const read = () => { try { return JSON.parse(localStorage.getItem(REQ_KEY)) || []; } catch { return []; } };
+const write = d => localStorage.setItem(REQ_KEY, JSON.stringify(d));
+const getSLA = () => { try { return {...DEFAULT_SLA, ...JSON.parse(localStorage.getItem(SLA_KEY))}; } catch { return {...DEFAULT_SLA}; } };
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const now = () => new Date().toLocaleString();
+const isOpen = r => r.status === "Pending" || r.status === "In Progress";
+const ts = r => r.created_ts || Date.parse(r.created_at) || Date.now();
+const badge = s => `<span class="badge b-${String(s).replace(" ","-")}">${esc(s)}</span>`;
+const pri = p => `<span class="pri pr-${p}">${esc(p)}</span>`;
+const fillSel = (el, arr) => el.innerHTML = `<option value="">All</option>` + arr.map(x => `<option>${x}</option>`).join("");
+
+function notify(t, err) {
+  $("msg").innerHTML = `<div class="alert ${err ? "err" : ""}">${esc(t)}</div>`;
+  setTimeout(() => $("msg").innerHTML = "", 4500);
+}
+
+function logHistory(r, status, note) {
+  if (!Array.isArray(r.history)) {
+    r.history = [{status: "Pending", note: "Request submitted.", at: r.created_at}];
+  }
+  r.history.push({status, note, at: now()});
+}
+
+/* ---------- Priority / SLA logic ---------- */
+function suggest(r) {
+  const text = " " + (r.title + " " + r.description).toLowerCase() + " ";
+  for (const [p, words] of RULES) if (words.some(w => text.includes(w))) return p;
+  return "Medium";
+}
+
+function slaInfo(r) {
+  const sla = getSLA()[r.priority] || 72;
+  const elapsed = (Date.now() - ts(r)) / 3600000;       // hours
+  const ratio = elapsed / sla;
+  return { sla, elapsed, ratio, overdue: isOpen(r) && ratio >= 1, left: sla - elapsed };
+}
+
+const score = r => (WEIGHT[r.priority] || 100) + slaInfo(r).ratio * 100;
+
+function fmtH(h) {
+  const a = Math.abs(h);
+  const t = a >= 24 ? `${Math.floor(a / 24)}d ${Math.round(a % 24)}h` : `${Math.floor(a)}h ${Math.round((a % 1) * 60)}m`;
+  return t;
+}
+
+/* ---------- Auth ---------- */
+function syncAuth() {
+  const ok = sessionStorage.getItem("campus_admin") === "1";
+  $("login").classList.toggle("hidden", ok);
+  $("panel").classList.toggle("hidden", !ok);
+  $("logoutBtn").classList.toggle("hidden", !ok);
+  if (ok) render();
+}
+$("loginForm").addEventListener("submit", e => {
+  e.preventDefault();
+  if ($("pw").value === PASSWORD) { sessionStorage.setItem("campus_admin", "1"); $("pw").value = ""; syncAuth(); }
+  else notify("Wrong password.", true);
+});
+function logout() { sessionStorage.removeItem("campus_admin"); syncAuth(); }
+
+/* ---------- Render ---------- */
+function renderStats() {
+  const open = read().filter(isOpen);
+  const overdue = open.filter(r => slaInfo(r).overdue).length;
+  $("stats").innerHTML = [...PRIORITIES].reverse().map(p =>
+      `<div class="tile t-${p}" onclick="quick('${p}')"><b>${open.filter(r => r.priority === p).length}</b>${p}<small>open</small></div>`).join("") +
+    `<div class="tile t-Overdue" onclick="quickOverdue()"><b>${overdue}</b>Overdue<small>past SLA</small></div>`;
+}
+
+function renderSLA() {
+  const s = getSLA();
+  $("slaGrid").innerHTML = [...PRIORITIES].reverse().map(p =>
+    `<div><label>${pri(p)} hours</label><input type="number" min="1" id="sla_${p}" value="${s[p]}"></div>`).join("");
+}
+
+function filtered() {
+  const q = $("f_q").value.trim().toLowerCase(), fp = $("f_pri").value, fs = $("f_status").value, v = $("f_view").value;
+  return read().filter(r => {
+    if (v === "open" && !isOpen(r)) return false;
+    if (v === "overdue" && !slaInfo(r).overdue) return false;
+    if (fp && r.priority !== fp) return false;
+    if (fs && r.status !== fs) return false;
+    if (q && ![r.title, r.student_name, r.student_id, String(r.id)].some(x => String(x ?? "").toLowerCase().includes(q))) return false;
+    return true;
+  }).sort((a, b) => (isOpen(b) - isOpen(a)) || score(b) - score(a));
+}
+
+function render() {
+  renderStats();
+  const rows = filtered();
+  $("count").innerHTML = `<b>${rows.length}</b> request(s) - sorted by priority, then SLA urgency`;
+
+  $("queue").innerHTML = `<table>
+    <tr><th>#</th><th>Request</th><th>Priority</th><th>SLA</th><th>Status</th><th>Action</th></tr>
+    ${rows.map(r => {
+      const i = slaInfo(r), open = isOpen(r);
+      const cls = i.overdue ? "bad" : (i.ratio > 0.75 ? "warn" : "ok");
+      const pct = Math.min(100, i.ratio * 100);
+      const sg = suggest(r);
+      return `<tr class="${i.overdue ? "overdue" : ""}">
+        <td>${r.id}</td>
+        <td><b>${esc(r.title)}</b><br><small>${esc(r.student_name)} (${esc(r.student_id)}) | ${esc(r.category) || "Uncategorized"}</small>
+            <br>${esc(r.description)}</td>
+        <td>${pri(r.priority)}${open && sg !== r.priority ? `<br><small>Suggested: <b>${sg}</b></small>` : ""}</td>
+        <td>${open ? `<div class="sla ${cls}">${i.overdue ? "Overdue by " + fmtH(i.left) : fmtH(i.left) + " left"}</div>
+              <div class="meter"><i style="width:${pct}%;background:${i.overdue ? "#c0392b" : (i.ratio > .75 ? "#e67e22" : "#2e9e4f")}"></i></div>
+              <small>SLA ${i.sla}h</small>` : "<small>Closed</small>"}</td>
+        <td>${badge(r.status)}</td>
+        <td>
+          <select id="pr-${r.id}">${PRIORITIES.map(p => `<option ${p === r.priority ? "selected" : ""}>${p}</option>`).join("")}</select>
+          <select id="st-${r.id}" style="margin-top:5px">${STATUSES.map(s => `<option ${s === r.status ? "selected" : ""}>${s}</option>`).join("")}</select>
+          <input id="rm-${r.id}" placeholder="Remarks" value="${esc(r.remarks)}" style="margin-top:5px">
+          <button class="btn sm" onclick="saveRow(${r.id})">Save</button>
+          ${open ? `<button class="btn sm org" onclick="escalate(${r.id})">Escalate</button>` : ""}
+        </td></tr>`;
+    }).join("") || `<tr><td colspan="6">No requests.</td></tr>`}
+  </table>`;
+}
+
+/* ---------- Actions ---------- */
+function quick(p) { $("f_pri").value = p; $("f_view").value = "open"; render(); }
+function quickOverdue() { $("f_view").value = "overdue"; render(); }
+function clearFilters() { $("f_q").value = ""; $("f_pri").value = ""; $("f_status").value = ""; $("f_view").value = "open"; render(); }
+
+function saveRow(id) {
+  const data = read(), r = data.find(x => x.id === id);
+  if (!r) return;
+  const np = $("pr-" + id).value, ns = $("st-" + id).value, remarks = $("rm-" + id).value.trim();
+  const notes = [];
+  if (np !== r.priority) { notes.push(`Priority changed ${r.priority} to ${np}.`); r.priority = np; }
+  if (ns !== r.status || remarks !== (r.remarks || "")) {
+    notes.push(remarks || "Status updated.");
+    r.status = ns; r.remarks = remarks;
+  }
+  if (notes.length) { logHistory(r, r.status, notes.join(" ")); r.updated_at = now(); write(data); notify(`Request #${id} updated.`); }
+  render();
+}
+
+function bump(r, reason) {
+  const i = PRIORITIES.indexOf(r.priority);
+  if (i >= PRIORITIES.length - 1) return false;
+  const old = r.priority;
+  r.priority = PRIORITIES[i + 1];
+  logHistory(r, r.status, `Priority escalated ${old} to ${r.priority}. ${reason}`);
+  r.updated_at = now();
+  return true;
+}
+
+function escalate(id) {
+  const data = read(), r = data.find(x => x.id === id);
+  if (!r) return;
+  if (!bump(r, "Manual escalation.")) return notify("Already at the highest priority.", true);
+  write(data); render(); notify(`Request #${id} escalated to ${r.priority}.`);
+}
+
+function escalateOverdue() {
+  const data = read();
+  let n = 0;
+  data.filter(r => isOpen(r) && slaInfo(r).overdue).forEach(r => { if (bump(r, "Auto-escalated: SLA breached.")) n++; });
+  write(data); render();
+  notify(`${n} overdue request(s) escalated.`);
+}
+
+function applySuggestions() {
+  if (!confirm("Set priority of all open requests to the keyword-based suggestion?")) return;
+  const data = read();
+  let n = 0;
+  data.filter(isOpen).forEach(r => {
+    const s = suggest(r);
+    if (s !== r.priority) { logHistory(r, r.status, `Priority set ${r.priority} to ${s} (suggested).`); r.priority = s; r.updated_at = now(); n++; }
+  });
+  write(data); render();
+  notify(`${n} request(s) re-prioritized.`);
+}
+
+function saveSLA() {
+  const s = {};
+  PRIORITIES.forEach(p => s[p] = Math.max(1, +$("sla_" + p).value || DEFAULT_SLA[p]));
+  localStorage.setItem(SLA_KEY, JSON.stringify(s));
+  render(); notify("SLA targets saved.");
+}
+
+function addSamples() {
+  const H = h => Date.now() - h * 3600000;
+  const S = [
+    ["Sparks from socket in Lab 3","Fire risk, sparks coming from wall socket, smoke smell.","Maintenance",  "Medium", 2],
+    ["WiFi not working in library","Internet is down since morning.","IT","Medium", 30],
+    ["Midterm result missing","Marks are not on the portal and the exam board closes soon.","Academic Support","Medium", 20],
+    ["Suggestion: add more benches","Would like more benches in the garden.","Other","Medium", 10],
+    ["Water leak in washroom","3rd floor pipe is leaking badly.","Maintenance","High", 40],
+    ["Bus 7 is late","Morning bus delayed almost daily.","Transport","Low", 200],
+    ["Need transcript copy","Requesting transcript, fee paid.","Administrative","Medium", 5]
+  ];
+  const data = read();
+  let id = data.length ? Math.max(...data.map(r => r.id)) : 0;
+  S.forEach(([title, description, category, priority, hrs], i) => data.push({
+    id: ++id, student_id: "232-35-" + (300 + i), student_name: "Sample Student " + (i + 1), email: "",
+    title, description, category, priority, status: i === 4 ? "In Progress" : "Pending", location: "", remarks: "",
+    created_ts: H(hrs), created_at: new Date(H(hrs)).toLocaleString(), updated_at: now()
+  }));
+  write(data); render();
+  notify("Sample requests loaded. Try Apply Suggested Priorities.");
+}
+
+/* ---------- Init ---------- */
+fillSel($("f_pri"), [...PRIORITIES].reverse());
+fillSel($("f_status"), STATUSES);
+renderSLA();
+["f_q","f_pri","f_status","f_view"].forEach(i => $(i).addEventListener("input", render));
+window.addEventListener("storage", () => { if (!$("panel").classList.contains("hidden")) render(); });
+setInterval(() => { if (!$("panel").classList.contains("hidden")) render(); }, 60000);   // refresh SLA timers
+syncAuth();
+</script>
+</body>
+</html>
